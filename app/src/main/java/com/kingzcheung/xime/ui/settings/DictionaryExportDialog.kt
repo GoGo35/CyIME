@@ -49,7 +49,7 @@ internal fun DictionaryExportDialog(
                 source = null
             }
             installed.forEach { pack ->
-                ExportChoice(pack.name, "导入的词库，${pack.count} 个词", source == pack.id,
+                ExportChoice(pack.name, "导入的词库，${pack.count + pack.english} 个词", source == pack.id,
                     "dictionary-export-source:${pack.id}") { source = pack.id }
             }
             Text("导出成", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
@@ -58,7 +58,7 @@ internal fun DictionaryExportDialog(
                 ExportChoice("${option.label} (.${option.extension})", option.note, format == option,
                     "dictionary-export-format:${option.name}") { format = option }
             }
-            Text("只导出两个字以上、带拼音的词。",
+            Text("中文导出带拼音的多字词；导入词库中的英文保留原拼写。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp))
         }

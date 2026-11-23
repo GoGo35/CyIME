@@ -22,7 +22,7 @@ object JsonCellDictionary {
     @Serializable
     private data class Document(
         val format: String, val name: String, val language: String, val scheme: String,
-        val entries: List<CellPinyinWord>,
+        val entries: List<CellPinyinWord>, val english: List<String> = emptyList(),
     )
 
     fun parse(bytes: ByteArray): ScelDictionary.Parsed {
@@ -33,11 +33,12 @@ object JsonCellDictionary {
         require(document.name.isNotBlank() && document.name.length <= 100 && document.name.none { it.isISOControl() }) {
             "词库名称无效"
         }
-        require(document.entries.size in 1..ScelDictionary.MAX_ENTRIES) { "词库必须包含 1 至 25 万条词语" }
+        require(document.entries.size + document.english.size in 1..ScelDictionary.MAX_ENTRIES) { "词库必须包含 1 至 25 万条词语" }
         val entries = document.entries.map { entry ->
             entry.validate()
             DictEntry(entry.word, entry.code, 100)
         }.distinctBy { it.word to it.code }
-        return ScelDictionary.Parsed(document.name.trim(), entries, 0)
+        require(document.english.all { TxtCellDictionary.englishWord(it) == it }) { "英文词条格式有误" }
+        return ScelDictionary.Parsed(document.name.trim(), entries, 0, document.english.distinct())
     }
 }

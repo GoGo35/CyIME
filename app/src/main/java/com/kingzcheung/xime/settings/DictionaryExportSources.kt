@@ -27,6 +27,7 @@ object DictionaryExportSources {
     fun packWords(store: CellDictionaryStore, id: String): List<DictEntry> {
         val file = store.dictionaryFile(id)
         require(file.isFile) { "词库文件不见了，请重新导入" }
-        return file.useLines(Charsets.UTF_8) { DictionaryExport.fromRimeDictionary(it) }
+        return file.useLines(Charsets.UTF_8) { DictionaryExport.fromRimeDictionary(it) } +
+            store.englishWords(id).map { DictEntry(it, "") }
     }
 }

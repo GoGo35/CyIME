@@ -233,10 +233,15 @@ class PredictionManager(
                 }
             }
             // 英文出短语（默认关）：编码正好是这串字母的「我的短语」排在补全词前面，见 EnglishPhrases。
-            if (!EnglishPhrases.isEnabled(context)) words
+            val personal = if (letters == null && !com.kingzcheung.xime.settings.IncognitoState.active) withContext(Dispatchers.IO) {
+                com.kingzcheung.xime.settings.EnglishWordMemory.completions(
+                    com.kingzcheung.xime.settings.SchemaManager.getRimeDir(context), text, limit)
+            } else emptyList()
+            val completions = EnglishPhrases.merge(personal, words, limit)
+            if (!EnglishPhrases.isEnabled(context)) completions
             else EnglishPhrases.merge(withContext(Dispatchers.IO) {
                 EnglishPhrases.matching(text, EnglishPhrases.phrases(context))
-            }, words, limit)
+            }, completions, limit)
         } catch (e: Exception) {
             Log.e(TAG, "English association failed", e)
             emptyList()

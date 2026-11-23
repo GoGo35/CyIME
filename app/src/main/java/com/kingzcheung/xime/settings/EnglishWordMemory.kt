@@ -9,6 +9,7 @@ import java.io.File
  */
 object EnglishWordMemory {
     const val FILE_NAME = "cyime_en_memory.txt"
+
     /**
      * Dictionary English words the user long-press deleted in Chinese 26 keys (2026-11-13: 删不掉的英文首选). They
      * have no learning record to forget, so lua/cyime_en_memory.lua puts them behind the first four candidates
@@ -17,18 +18,25 @@ object EnglishWordMemory {
     const val DEMOTED_FILE_NAME = "cyime_en_demoted.txt"
     private const val MAX_WORDS = 2000
     private val WORD = Regex("[A-Za-z]{2,40}")
-
     /** A word with a capital, or of four letters and more; raw lowercase ab/abc is mostly a jianpin slip. */
     internal fun isLearnable(text: String): Boolean =
         WORD.matches(text) && (text.any { it.isUpperCase() } || text.length >= 4)
 
     @Synchronized
-    fun remember(rimeDir: File, text: String) {
-        if (!isLearnable(text)) return
+    fun remember(
+        rimeDir: File,
+        text: String,
+    ) {
+        if (isLearnable(text)) rememberSelected(rimeDir, text)
+    }
+
+    @Synchronized
+    fun rememberSelected(rimeDir: File, text: String) {
+        if (!storedWord(text)) return
         val file = File(rimeDir, FILE_NAME)
         runCatching {
             val lines = if (file.exists()) file.readLines() else emptyList()
-            if (lines.lastOrNull() == text) return
+            if (lines.lastOrNull() == text) return@runCatching
             if (lines.size >= MAX_WORDS * 2) write(file, compact(lines + text)) else file.appendText("$text\n")
         }
         undemote(rimeDir, text)
@@ -36,7 +44,10 @@ object EnglishWordMemory {
 
     /** Long-press delete of a dictionary English word: it stays typable, behind the first four candidates. */
     @Synchronized
-    fun demote(rimeDir: File, text: String): Boolean {
+    fun demote(
+        rimeDir: File,
+        text: String,
+    ): Boolean {
         if (!WORD.matches(text)) return false
         val file = File(rimeDir, DEMOTED_FILE_NAME)
         val word = text.lowercase()
@@ -51,7 +62,10 @@ object EnglishWordMemory {
 
     /** Typing the word again with Enter brings it back to its dictionary place. */
     @Synchronized
-    fun undemote(rimeDir: File, text: String) {
+    fun undemote(
+        rimeDir: File,
+        text: String,
+    ) {
         val file = File(rimeDir, DEMOTED_FILE_NAME)
         if (!file.exists()) return
         runCatching {
@@ -63,9 +77,12 @@ object EnglishWordMemory {
 
     /** Long-press delete forgets the word in every spelling; false when it was never remembered. */
     @Synchronized
-    fun forget(rimeDir: File, text: String): Boolean {
+    fun forget(
+        rimeDir: File,
+        text: String,
+    ): Boolean {
         val file = File(rimeDir, FILE_NAME)
-        if (!WORD.matches(text) || !file.exists()) return false
+        if (!storedWord(text) || !file.exists()) return false
         return runCatching {
             val lines = file.readLines()
             val kept = lines.filterNot { it.trim().equals(text, ignoreCase = true) }
@@ -77,9 +94,37 @@ object EnglishWordMemory {
 
     /** Latest spelling of each word last, at most [MAX_WORDS]. */
     internal fun compact(lines: List<String>): List<String> =
-        lines.map { it.trim() }.filter { WORD.matches(it) }.asReversed().distinct().take(MAX_WORDS).asReversed()
+        lines
+            .map { it.trim() }
+            .filter(::storedWord)
+            .asReversed()
+            .distinct()
+            .take(MAX_WORDS)
+            .asReversed()
 
-    private fun write(file: File, words: List<String>) {
+    private fun storedWord(text: String) = WORD.matches(text) || EmailWordMemory.isValid(text)
+
+    private data class Stamp(val file: File, val size: Long, val modified: Long)
+    private var cache: Pair<Stamp, List<String>>? = null
+
+    /** File may also be updated by the Rime filter. Called on IO, never on a key's UI path. */
+    @Synchronized
+    fun completions(dir: File, prefix: String, limit: Int): List<String> {
+        if (prefix.length < 2 || limit <= 0) return emptyList()
+        val file = File(dir, FILE_NAME)
+        val stamp = Stamp(file, file.length(), file.lastModified())
+        val words = cache?.takeIf { it.first == stamp }?.second ?: run {
+            val entries = if (file.isFile) compact(file.readLines()).asReversed() else emptyList()
+            cache = stamp to entries
+            entries
+        }
+        return words.asSequence().filter { it != prefix && it.startsWith(prefix, ignoreCase = true) }.take(limit).toList()
+    }
+
+    private fun write(
+        file: File,
+        words: List<String>,
+    ) {
         val tmp = File(file.parentFile, "${file.name}.tmp")
         tmp.writeText(words.joinToString("") { "$it\n" })
         if (!tmp.renameTo(file)) {

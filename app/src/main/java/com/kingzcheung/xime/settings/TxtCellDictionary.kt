@@ -76,10 +76,29 @@ object TxtCellDictionary {
 
     private val latin = Regex("[A-Za-z0-9][A-Za-z0-9 '._&+-]{0,62}")
 
-    /** The English word of a line without Chinese characters, or null. A bare number or one letter is no word. */
+    private val spelledEnglish = Regex("""('?[a-zA-Z0-9](?:'[a-zA-Z0-9])+)[ \t]+(.+)""")
+    private val baiduEnglish = Regex("""(.+)\(([A-Za-z0-9](?:\|[A-Za-z0-9])+)\) \d+""")
+
+    /** Preserve the surface spelling, not a foreign IME's per-letter code or frequency. */
     internal fun englishWord(line: String): String? {
         if (line.any { it.code > 0x7f }) return null
-        val text = line.substringBefore('\t').trim().replace(Regex(" +"), " ")
+        fun spells(code: String, word: String) = CellDictionaryEnglish.letters(code) == CellDictionaryEnglish.letters(word)
+        val first = line.substringBefore('\t')
+        val surface = when {
+            '\t' in line && line.substringAfterLast('\t') == "en" -> line.substringAfter('\t').substringBefore('\t')
+            '(' in first -> baiduEnglish.matchEntire(first)?.destructured?.let { (w, c) -> w.takeIf { spells(c, w) } }
+            '\'' in line -> spelledEnglish.matchEntire(line)?.destructured?.let { (code, rest) ->
+                val w = rest.substringBefore('\t')
+                when {
+                    spells(code, w) -> w
+                    !code.startsWith("'") && w.substringAfterLast(' ').toIntOrNull() != null ->
+                        w.substringBeforeLast(' ').takeIf { spells(code, it) }
+                    else -> null
+                }
+            }
+            else -> null
+        }
+        val text = (surface ?: first).trim().replace(Regex(" +"), " ")
         if (!latin.matches(text) || text.none(Char::isLetter)) return null
         return text.takeIf { CellDictionaryEnglish.letters(it).length >= 2 }
     }

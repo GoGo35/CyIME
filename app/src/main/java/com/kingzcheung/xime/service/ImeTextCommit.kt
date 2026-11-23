@@ -265,6 +265,9 @@ internal class ImeTextCommit(private val service: XimeInputMethodService) {
                 commitCandidateAndPunctuation(paired, caret)) return@literal
             if (owner != service.uiState.value.inputSessionId) return@literal
             val committed = commitCompositionAndLiteral(output, asTyped = true, caret = caret)
+            if (committed) withContext(Dispatchers.Main) {
+                if (owner == service.uiState.value.inputSessionId) service.keyRouter.manualEmailKey(output)
+            }
             // 打 @（中文符号面板是全角 ＠）时给邮箱后缀（默认开），给着后缀时接着打的点、数字重新筛；
             // 邮箱框走上面的直接上屏，在那里给。
             if (committed && (literal == "@" || literal == "＠" ||

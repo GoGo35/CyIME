@@ -45,20 +45,25 @@ object DictionaryExport {
         var skipped = 0
         for (entry in words) {
             val code = entry.code.trim().replace(Regex(" +"), " ")
-            val ok = han.matches(entry.word) && pinyin.matches(code) && code.count { it == ' ' } + 1 == entry.word.length &&
+            val english = code.isEmpty() && TxtCellDictionary.englishWord(entry.word) == entry.word
+            val ok = english || han.matches(entry.word) && pinyin.matches(code) && code.count { it == ' ' } + 1 == entry.word.length &&
                 (format != Format.SOGOU || gbk.newEncoder().canEncode(entry.word))
             if (!ok) { skipped++; continue }
             val key = entry.word to code
             kept[key] = maxOf(kept[key] ?: 0, (entry.weight ?: 0).coerceAtLeast(0))
         }
-        var rows = kept.entries.map { Triple(it.key.first, it.key.second.split(' '), it.value.coerceAtLeast(1)) }
+        var rows = kept.entries.map { (key, weight) ->
+            val code = if (key.second.isEmpty()) CellDictionaryEnglish.letters(key.first).map { it.toString() }
+                else key.second.split(' ')
+            Triple(key.first, code, weight.coerceAtLeast(1))
+        }
         if (format == Format.CYIME && rows.size > MAX_JSON_WORDS) {
             skipped += rows.size - MAX_JSON_WORDS
             rows = rows.take(MAX_JSON_WORDS)
         }
         val bytes = when (format) {
-            Format.CYIME -> json(name, rows).toByteArray(Charsets.UTF_8)
-            Format.TEXT -> lines(rows, "\n") { (w, p, c) -> "$w\t${p.joinToString(" ")}\t$c" }.toByteArray(Charsets.UTF_8)
+            Format.CYIME -> json(name, rows.filter { han.matches(it.first) }, rows.filterNot { han.matches(it.first) }.map { it.first }).toByteArray(Charsets.UTF_8)
+            Format.TEXT -> lines(rows, "\n") { (w, p, c) -> if (han.matches(w)) "$w\t${p.joinToString(" ")}\t$c" else w }.toByteArray(Charsets.UTF_8)
             Format.RIME -> (rimeHeader() + lines(rows, "\n") { (w, p, c) -> "$w\t${p.joinToString(" ")}\t$c" })
                 .toByteArray(Charsets.UTF_8)
             Format.SOGOU -> lines(rows, "\r\n") { (w, p, _) -> "'${p.joinToString("'")} $w" }.toByteArray(gbk)
@@ -66,7 +71,7 @@ object DictionaryExport {
             Format.BAIDU -> utf16(lines(rows, "\r\n") { (w, p, c) -> "$w\t${p.joinToString("'")}'\t$c" })
             Format.BAIDU_MOBILE -> utf16(lines(rows, "\r\n") { (w, p, c) -> "$w(${p.joinToString("|")}) $c" })
             Format.GBOARD -> zip("dictionary.txt", ("# Gboard Dictionary version:1\n" +
-                lines(rows, "\n") { (w, p, _) -> "${p.joinToString("")}\t$w\tzh-CN" }).toByteArray(Charsets.UTF_8))
+                lines(rows, "\n") { (w, p, _) -> "${p.joinToString("")}\t$w\t${if (han.matches(w)) "zh-CN" else "en"}" }).toByteArray(Charsets.UTF_8))
         }
         return Result(bytes, rows.size, skipped)
     }
@@ -80,7 +85,7 @@ object DictionaryExport {
     private fun rimeHeader() = "# CyIME 导出的词库\n---\nname: cyime_export\nversion: \"1\"\nsort: by_weight\n...\n"
 
     /** cyime.dictionary.v1：手机「导入词库」和电脑版「词库管理 › 导入词库」都认。 */
-    private fun json(name: String, rows: List<Triple<String, List<String>, Int>>): String = buildString {
+    private fun json(name: String, rows: List<Triple<String, List<String>, Int>>, english: List<String>): String = buildString {
         val title = name.filterNot { it.isISOControl() }.trim().take(100).ifBlank { "CyIME 词库" }
         append("{\"format\":\"cyime.dictionary.v1\",\"name\":").append(quote(title))
         append(",\"language\":\"zh\",\"scheme\":\"pinyin\",\"entries\":[")
@@ -88,7 +93,9 @@ object DictionaryExport {
             if (index > 0) append(',')
             append("\n{\"word\":").append(quote(w)).append(",\"code\":").append(quote(p.joinToString(" "))).append('}')
         }
-        append("\n]}\n")
+        append("\n]")
+        if (english.isNotEmpty()) append(english.joinToString(",", prefix = ",\"english\":[", postfix = "]", transform = ::quote))
+        append("}\n")
     }
 
     private fun quote(text: String): String = buildString {

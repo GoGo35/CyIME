@@ -16,6 +16,9 @@ import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import com.kingzcheung.xime.settings.EditorKeyOrder
+import com.kingzcheung.xime.settings.SettingsPreferences
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -184,10 +187,12 @@ fun EditKeyboardLayout(
                     val sideScale = minOf(glyphScale,
                         ((cellHeight.value - 2 * inset.value - 12f) / (20f + 14f * fontScale)).coerceAtLeast(.25f))
                     val sideNeeded = maxOf(20f, 20f * fontScale) * sideScale + 2 * maxOf(8f, inset.value + 2f)
-                    val rows = listOf(
-                        listOf("undo", "home", "", "end", "delete"),
-                        listOf("redo", "line_start", "", "line_end", "select_all"),
-                        listOf("cut", "copy", "", "paste", "enter"))
+                    val prefs = SettingsPreferences.getPrefsPublic(LocalContext.current)
+                    val rows = remember(prefs) {
+                        EditorKeyOrder.decode(prefs.getString(EditorKeyOrder.PREF, null)).chunked(4).map { row ->
+                            row.take(2) + "" + row.drop(2)
+                        }
+                    }
                     Column(Modifier.fillMaxSize().testTag("editor-grid")) {
                         rows.forEachIndexed { rowIndex, row ->
                             Row(Modifier.weight(1f).fillMaxWidth()) {
