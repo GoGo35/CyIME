@@ -96,8 +96,10 @@ fun SettingsScreen(
     NavHost(
         navController = navController,
         startDestination = startDestination,
-        modifier = Modifier.menuSwipeBack(entry, if (back != null && entry != null && entry?.destination?.route != SettingsRoutes.Main) {
-            { if (back.hasEnabledCallbacks()) back.onBackPressed() }
+        // At the root there is nowhere to go, but consume a deliberate back swipe there too:
+        // otherwise releasing it inside a full-width settings row can be interpreted as a tap.
+        modifier = Modifier.menuSwipeBack(entry, if (back != null && entry != null) {
+            { if (entry?.destination?.route != SettingsRoutes.Main && back.hasEnabledCallbacks()) back.onBackPressed() }
         } else null),
         enterTransition = { if (motion) SettingsPageMotion.enter else EnterTransition.None },
         exitTransition = { if (motion) SettingsPageMotion.exit else ExitTransition.None },
