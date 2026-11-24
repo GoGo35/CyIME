@@ -68,31 +68,31 @@ internal fun horizontalKeyFlickPreview(
  * Ending the gesture clears everything at once, as before.
  */
 internal class KeyFlickFade(private val texts: Map<KeyFlickOrigin, String>, private val progress: List<State<Float>>) {
-    val strongest: Float get() = progress.maxOf { it.value }
-    fun labels(): List<KeyFlickPreview> = KeyFlickOrigin.entries.mapIndexedNotNull { index, origin ->
+    val strongest: Float get() = progress.maxOfOrNull { it.value } ?: 0f
+    fun labels(): List<KeyFlickPreview> = if (texts.isEmpty()) emptyList() else KeyFlickOrigin.entries.mapIndexedNotNull { index, origin ->
         val value = progress[index].value
         texts[origin]?.takeIf { value > 0.001f }?.let { KeyFlickPreview(it, value, origin) }
     }
+
+    companion object { val Idle = KeyFlickFade(emptyMap(), emptyList()) }
 }
 
 @Composable
 internal fun rememberKeyFlickFade(preview: KeyFlickPreview?): KeyFlickFade {
-    // The preview itself drives recomposition; this only remembers each side's last text.
+    // A newly mounted QWERTY has 26 untouched letters. Release/cancel clears all labels
+    // immediately; no key needs a direction animator until its first actual flick.
+    if (preview == null) return KeyFlickFade.Idle
     val texts = remember { HashMap<KeyFlickOrigin, String>() }
-    if (preview == null) texts.clear() else texts[preview.origin] = preview.text
-    // 换方向时新方向不再一下子整个跳出来（用户 11-22「上下左右拖动老是跳变」）：从原来那一角用 90 ms 追上手指，
-    // 追上以后照旧紧跟手指；旧方向照旧 120 ms 缩回去。同一方向里来回拖始终紧跟，不加延迟。
+    texts[preview.origin] = preview.text
     val entering = remember { HashSet<KeyFlickOrigin>() }
     val previous = remember { arrayOfNulls<KeyFlickOrigin>(1) }
-    if (preview == null) entering.clear()
-    else if (previous[0] != null && previous[0] != preview.origin) entering.add(preview.origin)
-    previous[0] = preview?.origin
+    if (previous[0] != null && previous[0] != preview.origin) entering.add(preview.origin)
+    previous[0] = preview.origin
     val progress = KeyFlickOrigin.entries.map { origin ->
-        val active = preview?.origin == origin
-        val target = if (active) preview!!.progress else 0f
+        val active = preview.origin == origin
+        val target = if (active) preview.progress else 0f
         val catchingUp = active && origin in entering
         val state = animateFloatAsState(target, when {
-            preview == null -> snap()
             catchingUp -> tween(90)
             active -> snap()
             else -> tween(120)

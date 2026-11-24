@@ -643,11 +643,11 @@ fun SwipeableKeyButton(
     val ctrlLetter = (ctrlShortcutLetter ?: shiftLetters?.singleOrNull()?.let { shiftTargets?.ctrlLetter(it) })
         ?.takeIf { shiftTargets?.ctrlFaces == true }
     // 从 0 起渐变：14 键这时才拆成单字母键，新键也要渐变出来，不能一出现就是快捷键键面。
-    val ctrlFade = remember { androidx.compose.animation.core.Animatable(0f) }
-    androidx.compose.runtime.LaunchedEffect(ctrlLetter != null) {
-        if (ctrlLetter != null) ctrlFade.animateTo(1f, androidx.compose.animation.core.tween(CTRL_FACE_FADE_MS))
-        else ctrlFade.snapTo(0f)
-    }
+    val ctrlFade = if (ctrlLetter != null) {
+        val fade = remember { androidx.compose.animation.core.Animatable(0f) }
+        LaunchedEffect(fade) { fade.animateTo(1f, androidx.compose.animation.core.tween(CTRL_FACE_FADE_MS)) }
+        fade
+    } else null
     // 双拼键位提示：这个键代表的翘舌声母和韵母（只在开着开关的双拼 26 键有）。开着时所有字母键都不画上下角标
     // （没有提示的 a、e 也一样），滑动照常。
     val doublePinyinHints = LocalDoublePinyinKeyHints.current
@@ -759,7 +759,7 @@ fun SwipeableKeyButton(
             !downCornerLabel.isNullOrBlank()) fitSwipeDownLine(downCornerLabel, maxWidth.value - 6f, maxHeight.value * 0.42f,
             effectiveSwipeFontSize.value, density.fontScale) else null
         Box(Modifier.fillMaxSize().graphicsLayer {
-            alpha = (1f - if (ctrlLetter != null) ctrlFade.value else 0f) * (if (showDisc) 1f else 1f - flickFade.strongest)
+            alpha = (1f - (ctrlFade?.value ?: 0f)) * (if (showDisc) 1f else 1f - flickFade.strongest)
         }, contentAlignment = if (layoutMode == ButtonLayout.COMPACT) Alignment.TopStart else Alignment.Center) {
             if (layoutMode == ButtonLayout.COMPACT) {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -928,7 +928,7 @@ fun SwipeableKeyButton(
                 initialColor = keyHintColor(resolvedText, frostedGlass, 0.7f, LocalKeyboardInputPreferences.current.cornerHintOpacity),
                 finalsColor = keyHintColor(resolvedText, frostedGlass, 0.6f, LocalKeyboardInputPreferences.current.cornerHintOpacity), fontFamily = keyLabelFontFamily)
         }
-        if (ctrlLetter != null) Box(Modifier.matchParentSize().graphicsLayer { alpha = ctrlFade.value }) {
+        if (ctrlLetter != null && ctrlFade != null) Box(Modifier.matchParentSize().graphicsLayer { alpha = ctrlFade.value }) {
             CtrlShortcutFace(ctrlLetter, resolvedText, frostedGlass, labelSize,
                 effectiveSwipeFontSize, hintsVisible, keyWidthDp, keyFontFamily,
                 cornerLabel = badgeText?.takeIf { ctrlShortcutLetter != null } ?: ctrlLetter.uppercase())

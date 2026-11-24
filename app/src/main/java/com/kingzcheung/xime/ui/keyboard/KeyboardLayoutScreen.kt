@@ -7,7 +7,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -34,9 +33,9 @@ fun KeyboardLayoutScreen(
     t9Controller: T9InputController? = null,
     candidateState: State<CandidateState> = remember { mutableStateOf(CandidateState()) },
 ) {
-    var lastLoggedKb by remember { mutableStateOf<KeyboardLayoutState?>(null) }
-    if (keyboardState != lastLoggedKb) {
-        lastLoggedKb = keyboardState
+    // This is an entry marker, not a draw callback. A diagnostic must not invalidate
+    // the keyboard it is observing or allocate anything in the release path.
+    if (FileLogger.isVerboseLoggingEnabled()) remember(keyboardState) {
         FileLogger.d("XimeKeyboard", "render keyboard: $keyboardState, ui ascii=${uiState.isAsciiMode}")
     }
     // 只在「有没有编码」变化时重组整块键盘，每打一个假名只重组候选栏。

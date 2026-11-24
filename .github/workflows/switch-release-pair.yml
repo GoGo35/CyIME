@@ -1,0 +1,43 @@
+name: Switch comparison (ARM64 Release)
+on:
+  push:
+    branches: [dev-release-pair]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - name: Prepare native build tools
+        run: |
+          sdkmanager 'ndk;29.0.14206865'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+          sudo apt-get update && sudo apt-get install -y cmake ninja-build
+      - name: Build and verify matched Release pair
+        run: |
+          cp scripts/ci/build-switch-pair.sh "$RUNNER_TEMP/build-switch-pair.sh"
+          bash "$RUNNER_TEMP/build-switch-pair.sh"
+      - name: Upload signed comparison APKs and provenance
+        uses: actions/upload-artifact@v7
+        with:
+          name: switch-release-pair-arm64
+          path: ${{ runner.temp }}/switch-pair/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
