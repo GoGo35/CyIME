@@ -98,6 +98,7 @@ data class KeyboardCallbacks(
     /** Takes back the last chosen syllable; the second lambda runs when nothing was taken back. */
     val onUndoPinyinSyllable: ((com.kingzcheung.xime.rime.PinyinSyllableChoices, () -> Unit,
         (com.kingzcheung.xime.rime.PinyinSyllableChoices?) -> Unit) -> Unit)? = null,
+    val onPersonalWordForgotten: ((String) -> Unit)? = null,
     val onAssociationSelect: ((Int) -> Unit)? = null,
     val onClearAssociation: (() -> Unit)? = null,
     val onToggleDarkMode: (() -> Unit)? = null,

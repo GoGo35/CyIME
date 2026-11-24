@@ -125,8 +125,10 @@ private fun InputConnection.sendLeftKeys(back: Int) {
 
 /** 光标夹在一对空符号中间时两边一起删掉；不是这种情况返回 false，由调用方照常退格。 */
 internal fun InputConnection.deleteEmptyPairAroundCursor(): Boolean {
-    if (!getSelectedText(0).isNullOrEmpty()) return false
+    // Usually the previous character isn't an opener: one editor round trip instead of three.
     val before = runCatching { getTextBeforeCursor(1, 0) }.getOrNull()
+    if (before == null || PairedSymbols.closingFor(before.toString()) == null) return false
+    if (!getSelectedText(0).isNullOrEmpty()) return false
     val after = runCatching { getTextAfterCursor(1, 0) }.getOrNull()
     if (!PairedSymbols.isEmptyPairAround(before, after)) return false
     return deleteSurroundingText(1, 1)

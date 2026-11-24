@@ -31,9 +31,17 @@ internal class ManualEmailRun {
     fun reset() { run.setLength(0); tooLong = false }
     fun key(text: String, surrounding: (String) -> Pair<String, String>?): String? {
         if (text.length != 1) { reset(); return null }
+        if (text == "＠") { if (run.length < 254) run.append('＠') else tooLong = true; return null }
         if (!part(text[0])) return finish(text, surrounding)
         if (run.length < 254) run.append(text) else tooLong = true
         return null
+    }
+    /** The editor accepted a specific @suffix replacement. Never infer its local part from host text. */
+    fun selectedDomain(typed: String, full: String, surrounding: (String) -> Pair<String, String>?): String? {
+        if (typed.isEmpty() || !run.endsWith(typed) || !full.startsWith('@')) { reset(); return null }
+        run.setLength(run.length - typed.length)
+        run.append(full)
+        return finish("", surrounding)
     }
     fun finish(separator: String, surrounding: (String) -> Pair<String, String>?): String? {
         val value = run.toString().takeIf { !tooLong && EmailWordMemory.isValid(it) }

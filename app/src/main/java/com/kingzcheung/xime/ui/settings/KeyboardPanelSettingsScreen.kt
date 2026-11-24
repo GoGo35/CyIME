@@ -57,7 +57,7 @@ internal fun KeyboardPanelSettingsContent(panel: KeyboardPanelLaunch.Panel, onBa
 
 private val editorLabels = mapOf("undo" to "撤销", "home" to "段首", "end" to "段尾", "delete" to "删除",
     "redo" to "重做", "line_start" to "行首", "line_end" to "行尾", "select_all" to "全选",
-    "cut" to "剪切", "copy" to "复制", "paste" to "粘贴", "enter" to "回车")
+    "cut" to "剪切", "copy" to "复制", "paste" to "粘贴", "enter" to "回车", "forward_delete" to "Del（向右删除）")
 
 @Composable
 private fun EditorKeyOrderSettings() {
@@ -71,7 +71,7 @@ private fun EditorKeyOrderSettings() {
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Text("编辑面板按键位置", style = MaterialTheme.typography.titleMedium)
-        Text("依次点两个键即可互换并保存。方向盘固定；第二行靠近方向盘的两个位置只在宽屏显示。",
+        Text("依次点两个键即可互换，或选一个位置后点下方的备用键替换。方向盘固定；第二行靠近方向盘的两个位置只在宽屏显示。",
             style = MaterialTheme.typography.bodySmall)
         order.chunked(4).forEachIndexed { r, row ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -86,6 +86,11 @@ private fun EditorKeyOrderSettings() {
                             else MaterialTheme.colorScheme.onSurface)
                     }
                 }
+            }
+        }
+        (EditorKeyOrder.actions - order.toSet()).forEach { unused ->
+            TextButton(enabled = first in order.indices, onClick = { save(EditorKeyOrder.replace(order, first, unused)) }) {
+                Text("替换为：${editorLabels.getValue(unused)}")
             }
         }
         TextButton(onClick = { save(EditorKeyOrder.defaults) }, enabled = order != EditorKeyOrder.defaults || first >= 0) {

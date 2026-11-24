@@ -146,6 +146,7 @@ fun EditKeyboardLayout(
                         "left" -> Icons.Default.KeyboardArrowLeft to "向左"
                         "right" -> Icons.Default.KeyboardArrowRight to "向右"
                         "delete" -> Icons.AutoMirrored.Filled.Backspace to "删除"
+                        "forward_delete" -> Icons.Default.KeyboardArrowRight to "Del"
                         "enter" -> actionKeyIcon(enterKeyText) to enterKeyText
                         "select_all" -> Icons.Default.SelectAll to "全选"
                         else -> Icons.Default.TextFields to if (selecting) "取消选择" else "选择"
@@ -153,7 +154,7 @@ fun EditKeyboardLayout(
                     val arrow = command in listOf("up", "down", "left", "right")
                     val colors = when (command) {
                         "enter" -> LocalEnterKeyColors.current
-                        "delete" -> LocalFunctionKeyColors.current
+                        "delete", "forward_delete" -> LocalFunctionKeyColors.current
                         else -> null
                     }
                     EditorActionKey(icon, label, {
@@ -173,7 +174,7 @@ fun EditKeyboardLayout(
                         arrow -> Color.Transparent
                         else -> colors?.background ?: keyBgColor
                     }, colors?.foreground ?: textColor, keyModifier,
-                        repeatable = arrow || command in listOf("delete", "enter"),
+                        repeatable = arrow || command in listOf("delete", "forward_delete", "enter"),
                         plain = arrow, visualShape = cutout, compact = compact,
                         glowSize = if (arrow) androidx.compose.ui.unit.DpSize(padDiameter / 3, padDiameter / 3) else null,
                         contentOffsetX = offsetX, contentOffsetY = offsetY,

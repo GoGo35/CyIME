@@ -52,15 +52,18 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
     /** Main thread, after the editor accepts a keyboard literal, or before an explicit end of input. */
     internal fun manualEmailKey(text: String?) {
         if (!canLearnHere()) { manualEmail.reset(); return }
-        val surrounding: (String) -> Pair<String, String>? = { ending ->
+        recordCompletedEmail(if (text == null) manualEmail.finish("", ::emailSurrounding) else manualEmail.key(text, ::emailSurrounding))
+    }
+
+    private fun emailSurrounding(ending: String): Pair<String, String>? =
             runCatching {
                 val ic = service.currentInputConnection ?: return@runCatching null
                 val before = ic.getTextBeforeCursor(ending.length + 1, 0) ?: return@runCatching null
                 val after = ic.getTextAfterCursor(1, 0) ?: return@runCatching null
                 before.toString() to after.toString()
             }.getOrNull()
-        }
-        val completed = if (text == null) manualEmail.finish("", surrounding) else manualEmail.key(text, surrounding)
+
+    private fun recordCompletedEmail(completed: String?) {
         if (completed != null) service.serviceScope.launch(Dispatchers.IO) {
             runCatching { com.kingzcheung.xime.settings.EmailWordMemory.record(
                 com.kingzcheung.xime.settings.SchemaManager.getRimeDir(service), completed) }
@@ -408,7 +411,6 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
 
     /** 邮箱框里点候选栏的邮箱后缀：只补上还没打的那段；光标前已经对不上就什么都不做。主线程调用。 */
     private fun selectDirectFieldEmailSuffix(index: Int): Boolean {
-        resetManualEmail()
         val state = service.candidateState.value
         val domain = state.associationCandidates.takeIf(EmailSuffixes::isSuggestionList)?.getOrNull(index) ?: return false
         val ic = service.currentInputConnection ?: return false
@@ -416,7 +418,9 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
         service.predictionManager.invalidatePendingPredictions()
         service.candidateState.value = CandidateState()
         val rest = EmailSuffixes.remainder(before, domain)?.let(service.editorInputPolicy.field::typedLiteral)
-        return !rest.isNullOrEmpty() && ic.commitText(rest, 1)
+        val accepted = !rest.isNullOrEmpty() && ic.commitText(rest, 1)
+        finishEmailSelection(before, domain, accepted)
+        return accepted
     }
 
     /**
@@ -453,8 +457,13 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
     }
 
     /** 普通输入框里点候选栏的邮箱后缀：把光标前「@ 已经打的」换成「@ 整个后缀」；光标前已经对不上就只收起。主线程调用。 */
+    private fun finishEmailSelection(before: String?, domain: String, accepted: Boolean) {
+        val replacement = EmailSuffixes.completion(before, domain)
+        if (!accepted || replacement == null || !canLearnHere()) { resetManualEmail(); return }
+        recordCompletedEmail(manualEmail.selectedDomain(replacement.first, replacement.second, ::emailSurrounding))
+    }
+
     private fun selectEmailSuffix(domain: String): Boolean {
-        resetManualEmail()
         service.predictionManager.invalidatePendingPredictions()
         englishAutoSpace.disarm()
         val before = runCatching {
@@ -463,6 +472,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
         val replaced = EmailSuffixes.completion(before, domain)?.let { (typed, full) ->
             service.replaceBeforeCursor(typed, full)
         } == true
+        finishEmailSelection(before, domain, replaced)
         // 数字键盘在 @ 后打的数字、点也进了计算器：换成后缀后别让下一个运算符接到它们上。
         if (replaced) service.calculatorEngine.clear()
         service.candidateState.value = service.candidateState.value.copy(pendingEnglishText = "", associationCandidates = emptyList())
@@ -657,10 +667,13 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
     }
 
     /** 英文（西、德、法、意…）打了一个字母或撇号后，按整个词要补全。 */
+    // Serialized by the input queue. Only the latest prefix needs a lookup, including during held backspace.
+    private var englishLookup: kotlinx.coroutines.Job? = null
     private fun requestEnglishCompletions(next: CandidateState) {
+        englishLookup?.cancel()
         if (service.isSecretEditor() || !next.englishReplaceSupported) return
         val pending = next.pendingEnglishText
-        service.serviceScope.launch(InputCommandOwner.requireOwner().context()) {
+        englishLookup = service.serviceScope.launch(InputCommandOwner.requireOwner().context()) {
             val words = service.predictionManager.getEnglishAssociations(pending)
             withEditor {
                 val current = service.candidateState.value
@@ -1402,8 +1415,10 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
         }
         if (latencyKind == "letter" && hardwareEvent == null) KeyLatencyProbe.fired(service.uiState.value.inputProfile.layout.id)
         val inputContext = InputCommandOwner.requireOwner().context()
+        val switchQueuedAt = if (key == "ime_switch" && KeyLatencyProbe.enabled) System.nanoTime() else 0L
         val commandContext = if (submittingGlide) inputContext + glideBatch.asContextElement(true) else inputContext
         service.inputCommands.submit(commandContext, kind = latencyKind) command@{
+            val switchStartedAt = if (switchQueuedAt != 0L) System.nanoTime() else 0L
             KeyLatencyProbe.started()
             InputCommandOwner.requireOwner().requireCurrent(service.inputReadiness, service.uiState.value.inputSessionId)
             if (!service.inputReadiness.accepts(admission) || hasPendingCandidateCommit) return@command
@@ -2022,7 +2037,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     if (switchOptions.mode ==
                         com.kingzcheung.xime.settings.LanguageSwitchMode.CURRENT_ENGLISH) {
                         val state = service.uiState.value
-                        val schemaId = service.rimeEngine.getCurrentSchema()
+                        val schemaId = state.currentSchemaId.ifBlank { service.rimeEngine.getCurrentSchema() }
                         val nativeLanguageEnabled = com.kingzcheung.xime.settings.InputModes.languageOf(
                             schemaId, state.schemas) in com.kingzcheung.xime.settings.LanguagePreferences.enabled(service)
                         val optimisticTarget = if (nativeLanguageEnabled) !state.isAsciiMode else true
@@ -2040,15 +2055,17 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     if (!service.schemaController.switchInputMethod(useLanguageKeyPreference = true,
                             languageSwitchMode = languageSwitchMode)) {
                         // 失败后继续显示引擎的实际状态。
+                        val actualAscii = service.rimeEngine.isAsciiMode()
+                        val actualSchema = service.rimeEngine.getCurrentSchema()
                         withEditor {
-                            val actualAscii = service.rimeEngine.isAsciiMode()
                             service.uiState.value = service.uiState.value.copy(isAsciiMode = actualAscii)
                             service.keyboardViewModel.dispatch(
-                                com.kingzcheung.xime.ui.keyboard.KeyboardDispatchAction.AsciiModeChanged(actualAscii, service.rimeEngine.getCurrentSchema())
+                                com.kingzcheung.xime.ui.keyboard.KeyboardDispatchAction.AsciiModeChanged(actualAscii, actualSchema)
                             )
                         }
                     }
-                    FileLogger.i(XimeInputMethodService.TAG, "ime_switch handled, total ${(System.nanoTime() - t0) / 1_000_000}ms (queue+rimeLock+main)")
+                    FileLogger.i(XimeInputMethodService.TAG, "ime_switch handled in ${(System.nanoTime() - t0) / 1_000_000}ms after preview")
+                    if (switchQueuedAt != 0L) Log.d(KeyLatencyProbe.TAG, "switch queue=${(switchStartedAt - switchQueuedAt) / 1_000_000} run=${(System.nanoTime() - switchStartedAt) / 1_000_000}")
                 }
                 "abc" -> {
                     service.calculatorEngine.clear()
@@ -2785,6 +2802,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
     /** 单次退格处理（service.keyProcessingDispatcher 上执行）。 */
     internal suspend fun processDeleteKey(hold: com.kingzcheung.xime.keyboard.RepeatInput?) {
         val owner = service.uiState.value.inputSessionId
+        englishLookup?.cancel()
         // 退格照常删掉自动补的空格；之后再打标点、空格不再按自动空格处理。
         englishAutoSpace.disarm()
         // 快捷发送表单显示：退格按焦点路由到表单内 EditText（与单击退格同一路径），不进入 Rime
@@ -2891,17 +2909,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                             candidateActions = emptyList()
                         )
                     }
-                    if (!service.isSecretEditor() && service.supportsEnglishCandidateReplace()) {
-                        service.serviceScope.launch(InputCommandOwner.requireOwner().context()) {
-                            val candidates = service.predictionManager.getEnglishAssociations(newPending, PredictionManager.MAX_ASSOCIATION_COUNT)
-                            withEditor {
-                                if (owner != service.uiState.value.inputSessionId) return@withEditor
-                                if (service.candidateState.value.pendingEnglishText == newPending) {
-                                    service.candidateState.value = service.candidateState.value.copy(associationCandidates = candidates)
-                                }
-                            }
-                        }
-                    }
+                    requestEnglishCompletions(candState.copy(pendingEnglishText = newPending))
                 } else {
                     withEditor {
                         if (owner != service.uiState.value.inputSessionId) return@withEditor

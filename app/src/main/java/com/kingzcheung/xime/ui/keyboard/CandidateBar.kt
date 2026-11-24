@@ -206,6 +206,8 @@ data class CandidateBarCallbacks(
     // 长按候选：抛事件给宿主（键盘视图内弹确认覆盖层，不弹独立窗口——
     // 焦点型弹窗会抢焦点导致 IME 被系统收起）。
     val onCandidateLongPress: ((Int) -> Unit)? = null,
+    /** 长按联想/英文补全候选：抛出候选文本给宿主处理。 */
+    val onAssociationLongPress: ((String) -> Unit)? = null,
     /** A long press followed by a drag selects a range within the first sentence. */
     val onSentenceSelection: ((Int, Int) -> Unit)? = null,
     val onSentenceSelectionChange: ((Int, Int) -> Unit)? = null,
@@ -849,6 +851,7 @@ fun CandidateBar(
                             text = candidateNumberedText(candidate, index, showNumberLabels && assocState != null),
                             index = -1,
                             onClick = { callbacks.onAssociationSelect?.invoke(index) },
+                            onLongClick = callbacks.onAssociationLongPress?.let { { it(candidate) } },
                             textColor = protectedVisuals.textColor,
                             comment = if (showComments) displayComments.getOrElse(index) { "" } else "",
                             isSelected = assocState?.highlightIndex == index,
@@ -2515,7 +2518,8 @@ internal fun FixedCandidateStrip(
                         .then(if (showDividers && position > 0) Modifier.candidateLeadingDivider(itemDividerColor,
                             itemSpacing, fontSize) else Modifier)
                         .then(if (index == focused) Modifier.onGloballyPositioned { focusedBounds = it.boundsInRoot(); focusedOnScreen = true } else Modifier),
-                    onLongClick = if (index < candidates.size) callbacks.onCandidateLongPress?.let { action -> { action(index) } } else null,
+                    onLongClick = if (index < candidates.size) callbacks.onCandidateLongPress?.let { action -> { action(index) } }
+                        else callbacks.onAssociationLongPress?.let { { it(all[index]) } },
                     onSentenceSelection = callbacks.onSentenceSelection.takeIf { index == 0 && !showNumberLabels },
                     onSentenceSelectionChange = callbacks.onSentenceSelectionChange.takeIf { index == 0 && !showNumberLabels },
                     onSentenceSelectionEnd = callbacks.onSentenceSelectionEnd.takeIf { index == 0 && !showNumberLabels },
@@ -2657,7 +2661,8 @@ private fun ScrollableCandidateRow(
                 modifier = if (hidden) Modifier.alpha(0f).clearAndSetSemantics {} else Modifier.testTag("bar-candidate:$index")
                     .then(if (divided) Modifier.candidateLeadingDivider(itemDividerColor, itemSpacing, fontSize) else Modifier)
                     .then(if (index == focused) Modifier.onGloballyPositioned { onFocusedBounds(it.boundsInRoot()) } else Modifier),
-                onLongClick = if (numbered) callbacks.onCandidateLongPress?.let { action -> { action(index) } } else null,
+                onLongClick = if (numbered) callbacks.onCandidateLongPress?.let { action -> { action(index) } }
+                    else callbacks.onAssociationLongPress?.let { { it(all[index]) } },
                 onSentenceSelection = callbacks.onSentenceSelection.takeIf { index == 0 && !showNumberLabels },
                     onSentenceSelectionChange = callbacks.onSentenceSelectionChange.takeIf { index == 0 && !showNumberLabels },
                     onSentenceSelectionEnd = callbacks.onSentenceSelectionEnd.takeIf { index == 0 && !showNumberLabels },
