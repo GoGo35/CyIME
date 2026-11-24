@@ -74,7 +74,17 @@ jobs:
         run: chmod +x gradlew
         
       - name: Run Unit Tests
-        run: ./gradlew :app:testDebugUnitTest :plugin-core:testDebugUnitTest --no-daemon
+        shell: bash
+        run: |
+          # Compiler / setup failures have no JUnit XML. Surface their diagnostics on the run summary.
+          set -o pipefail
+          log="$RUNNER_TEMP/unit-gradle.log"
+          if ! ./gradlew :app:testDebugUnitTest :plugin-core:testDebugUnitTest --no-daemon --console=plain 2>&1 | tee "$log"; then
+            grep -E '^e: |^> Task .* FAILED|^Execution failed for task|^> +[^ >]|^Gradle build daemon disappeared' "$log" | tail -30 | while IFS= read -r line; do
+              printf '::error::%s\n' "${line//'%'/'%25'}"
+            done
+            exit 1
+          fi
         
       - name: Generate Test Report
         if: always()
