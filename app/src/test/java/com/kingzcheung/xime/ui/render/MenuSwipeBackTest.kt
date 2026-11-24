@@ -17,7 +17,6 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.kingzcheung.xime.R
 import com.kingzcheung.xime.keyboard.*
 import com.kingzcheung.xime.ui.common.menuSwipeBack
 import com.kingzcheung.xime.ui.keyboard.AppFonts
@@ -60,11 +59,12 @@ class MenuSwipeBackTest {
         }
         rule.onNodeWithText("按键效果").assertIsDisplayed()
         shot("settings-scrolled")
-        rule.onRoot().performTouchInput { edgeSwipe() }
-        rule.onNodeWithText(rule.activity.getString(R.string.settings_title)).assertIsDisplayed()
+        // Start over the toolbar, not a slider newly scrolled under the screen centre.
+        rule.onRoot().performTouchInput { swipe(Offset(width * .87f, 52.dp.toPx()), Offset(width * .32f, 52.dp.toPx()), 380) }
+        rule.onNodeWithTag("settings-search").assertIsDisplayed()
         shot("settings-returned")
         rule.onRoot().performTouchInput { edgeSwipe() }
-        rule.onNodeWithText(rule.activity.getString(R.string.settings_title)).assertIsDisplayed()
+        rule.onNodeWithTag("settings-search").assertIsDisplayed()
     }
 
     @Test fun slidersOwnTheirHorizontalDragAndAnInitiallyVerticalGestureCannotBecomeBack() {

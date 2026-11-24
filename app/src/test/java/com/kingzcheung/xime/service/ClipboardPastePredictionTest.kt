@@ -11,6 +11,7 @@ class ClipboardPastePredictionTest {
     private class Fixture(result: TextCommitResult) {
         val service = mock<XimeInputMethodService>()
         val prediction = mock<PredictionManager>()
+        val router = mock<ImeKeyRouter>()
         val handler = mock<Handler>()
         val candidates = mutableStateOf(CandidateState(
             associationCandidates = listOf("旧联想"), pendingEnglishText = "old",
@@ -22,7 +23,7 @@ class ClipboardPastePredictionTest {
                 "mainHandler" to handler, "uiState" to mutableStateOf(InputUIState()),
                 "inputReadiness" to InputReadiness().apply { completeStartup() },
                 // Constructor-initialized on a real service; a Mockito mock skips initializers.
-                "editorInputPolicy" to EditorSessionInputPolicy(),
+                "editorInputPolicy" to EditorSessionInputPolicy(), "keyRouter" to router,
             ).forEach { (name, value) ->
                 XimeInputMethodService::class.java.getDeclaredField(name).apply {
                     isAccessible = true
@@ -41,6 +42,7 @@ class ClipboardPastePredictionTest {
         val f = Fixture(TextCommitResult.ACCEPTED_HOST)
         f.service.commitPastedText("刚复制的中文内容")
         verify(f.prediction).invalidatePendingPredictions()
+        verify(f.router).resetManualEmail()
         verify(f.service).commitTextSilently("刚复制的中文内容", true, false, CommitCaret.NONE)
         verify(f.handler, never()).post(any())
         assertTrue(f.candidates.value.associationCandidates.isEmpty())
