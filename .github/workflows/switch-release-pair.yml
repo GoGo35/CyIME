@@ -26,8 +26,9 @@ jobs:
       - name: Prepare native build tools
         run: |
           sdkmanager 'ndk;29.0.14206865'
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+          ndk="$ANDROID_HOME/ndk/29.0.14206865"
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK=$ndk" >> "$GITHUB_ENV"
           sudo apt-get update && sudo apt-get install -y cmake ninja-build
       - name: Build and verify matched Release pair
         run: |

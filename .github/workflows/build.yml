@@ -57,7 +57,16 @@ jobs:
             native-${{ runner.os }}-
 
       - name: Download native deps (ONNX Runtime)
-        run: ./gradlew downloadOnnx --no-daemon
+        shell: bash
+        run: |
+          log="$RUNNER_TEMP/native-setup.log"
+          if ! ./gradlew downloadOnnx --no-daemon --console=plain >"$log" 2>&1; then
+            tail -70 "$log"
+            grep -E '^Execution failed|^> [^ ]|HTTP [0-9]+:' "$log" | tail -18 | while IFS= read -r line; do
+              printf '::error::%s\n' "${line//'%'/'%25'}"
+            done
+            exit 1
+          fi
         
       - name: Cache CMake build
         uses: actions/cache@v6

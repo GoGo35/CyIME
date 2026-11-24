@@ -23,7 +23,7 @@ for side in A-base B-fork; do
 from pathlib import Path
 changes = {
     'app/build.gradle.kts': [('applicationId = "com.cyletix.cyime"', 'applicationId = "com.cyletix.cyime.switchpair"'),
-        ('abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")', 'abiFilters += "arm64-v8a"'),
+        ('abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")', '// The ABI split below selects the sole comparison ABI.'),
         ('include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")', 'include("arm64-v8a")'), ('isUniversalApk = true', 'isUniversalApk = false')],
     'app/src/main/res/values/strings.xml': [('name="app_name" translatable="false">CyIME<', 'name="app_name" translatable="false">CyIME A/B<')],
     'app/src/main/AndroidManifest.xml': [('android:label="CyIME"', 'android:label="CyIME A/B"')],
@@ -61,7 +61,7 @@ PY
   grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' "$RUNNER_TEMP/sig-$side"
   "$bt/aapt" dump badging "$out/$name" > "$RUNNER_TEMP/badging-$side"
   grep -Fq "package: name='com.cyletix.cyime.switchpair' versionCode='20261515' versionName='$version'" "$RUNNER_TEMP/badging-$side"
-  grep -Fxq "native-code: 'arm64-v8a'" "$RUNNER_TEMP/badging-$side"
+  grep -Eq "^native-code: 'arm64-v8a'[[:space:]]*$" "$RUNNER_TEMP/badging-$side"
   if grep -q 'application-debuggable' "$RUNNER_TEMP/badging-$side"; then echo '::error::Not a release APK'; exit 1; fi
   printf '%s %s %s\n' "$side" "$sha" "$version" >> "$out/provenance.txt"
   (cd "$out"; sha256sum "$name" >> SHA256SUMS)
