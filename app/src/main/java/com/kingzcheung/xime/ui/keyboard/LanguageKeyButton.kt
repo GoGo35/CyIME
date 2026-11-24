@@ -147,13 +147,11 @@ fun LanguageKeyButton(
 ) {
     val actions = LocalKeyboardInputActions.current
     val context = LocalContext.current
-    val schemas by rememberUpdatedState(com.kingzcheung.xime.settings.InputModes.languageChoices(
-        actions.schemas, actions.currentInputModeId,
-        com.kingzcheung.xime.settings.InputModes.rememberedModes(context, actions.schemas),
-        com.kingzcheung.xime.settings.InputModes.languageOrder(context),
-        com.kingzcheung.xime.settings.InputModes.selectedProfiles(context), actions.fieldNativeModeId))
+    // A tap switches language, not opens the menu. Resolve the (preference- and schema-dependent)
+    // choices only when a hold actually opens it, using the latest actions rather than a stale cache.
+    val currentActions by rememberUpdatedState(actions)
     val switchSchema by rememberUpdatedState(actions.onSwitchSchema)
-    val hasMenu = schemas.isNotEmpty() && switchSchema != null
+    val hasMenu = switchSchema != null
     val scope = rememberCoroutineScope()
     val view = LocalView.current
     val suppressCursorMove = LocalSuppressCursorMove.current
@@ -235,7 +233,7 @@ fun LanguageKeyButton(
     val menuPanel = if (menuGeometry.bounds.top < keyboardPanel.top)
         keyboardPanel.copy(top = menuGeometry.bounds.top) else keyboardPanel
     val glass = LocalKeyboardInputPreferences.current.frostedGlass
-    val blurBehind = glass.enabled && glass.normalized().blurRadiusDp >= 1f && rememberLanguageMenuBlurAvailable()
+    val blurBehind = menuOpen && glass.enabled && glass.normalized().blurRadiusDp >= 1f && rememberLanguageMenuBlurAvailable()
     // 玻璃下菜单和面板一样透出后面：菜单区域先叠一层实时模糊（盖在按键上面），再画半透明主题色。
     // 必须先于下面的 Popup 加入窗口，同类子窗口按加入顺序叠放。
     if (menuOpen && blurBehind) {
@@ -284,7 +282,14 @@ fun LanguageKeyButton(
                         imm?.showInputMethodPicker()
                     } else if (hasMenu) scope.launch {
                         delay((menuHoldSeconds * 1000).roundToLong())
-                        menuSchemas = schemas
+                        val latest = currentActions
+                        val choices = com.kingzcheung.xime.settings.InputModes.languageChoices(
+                            latest.schemas, latest.currentInputModeId,
+                            com.kingzcheung.xime.settings.InputModes.rememberedModes(context, latest.schemas),
+                            com.kingzcheung.xime.settings.InputModes.languageOrder(context),
+                            com.kingzcheung.xime.settings.InputModes.selectedProfiles(context), latest.fieldNativeModeId)
+                        if (choices.isEmpty()) return@launch
+                        menuSchemas = choices
                         selectedId = null
                         viewport = Rect.Zero
                         pointer = Offset.Unspecified

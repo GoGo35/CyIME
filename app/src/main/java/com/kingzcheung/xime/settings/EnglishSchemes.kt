@@ -13,6 +13,14 @@ internal object EnglishSchemes {
 
     data class Target(val schemaId: String, val asciiMode: Boolean)
 
+    /** Only the default native→direct-English key has a known destination without enumerating schemas.
+     * Field overrides and word schemas use the full resolver, including its installed-schema checks. */
+    fun directKeyTarget(mode: LanguageSwitchMode?, from: InputLanguage, currentSchema: String,
+        fieldOverride: String?, selectedEnglish: String?): Target? =
+        if (mode == LanguageSwitchMode.CURRENT_ENGLISH && from != InputLanguage.ENGLISH &&
+            currentSchema.isNotBlank() && fieldOverride == null &&
+            (selectedEnglish == null || selectedEnglish == InputModes.ENGLISH)) Target(currentSchema, true) else null
+
     /**
      * 切到英文用哪个方案：[selected] 是已启用的英文方案（单词）就换到它、关 ascii；否则是直接输入，在母语方案上开 ascii。
      * 正在单词方案上改选直接输入时先回到 [nativeSchema] 再开 ascii；没有母语方案可回时返回 null（不切）。

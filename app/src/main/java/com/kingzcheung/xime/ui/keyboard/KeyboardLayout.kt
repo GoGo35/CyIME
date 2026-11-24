@@ -148,7 +148,7 @@ fun KeyboardLayout(
     val neighborCorrection = !isAsciiMode && LocalKeyboardInputPreferences.current.neighborCorrection
     val doublePinyinCorrection = LocalKeyboardInputPreferences.current.doublePinyinCorrection
     val geometry = remember(cfgVer, keyRows, neighborCorrection, doublePinyin, doublePinyinCorrection, uiState.currentSchemaId, splitKeyboard) {
-        LetterGeometry { encoded ->
+        if (!neighborCorrection) LetterGeometry(null) else LetterGeometry { encoded ->
             callbacks.onLetterNeighbors?.invoke(uiState.currentSchemaId,
                 com.kingzcheung.xime.keyboard.letterNeighborsForEngine(encoded, neighborCorrection, doublePinyin, doublePinyinCorrection))
         }
@@ -957,16 +957,17 @@ fun KeyboardLayout(
                                 segmentKeys.forEach { key ->
                                     // 「按键符号」给这个键设的上下滑动作（如 Z X C V 预设）：角标写动作名，动作由 SwipeableKeyButton 套用。
                                     val (boundUpLabel, boundDownLabel) = letterSwipeCornerLabels(key)
-                                    val rawSwipeUpLabel = boundUpLabel ?: KeysConfigHelper.getSwipeUpLabel(key, isAsciiMode)
+                                    val gesture = KeysConfigHelper.getKeyGesture(key, isAsciiMode)
+                                    val rawSwipeUpLabel = boundUpLabel ?: KeysConfigHelper.getSwipeUpLabel(key, gesture?.swipeUp)
                                     val swipeUpText =
                                         if (swipeUpHintsEnabled) rawSwipeUpLabel else null
-                                    val swipeUpAction = KeysConfigHelper.getSwipeUpAction(key, isAsciiMode)
-                                    val swipeUpDisplay = if (boundUpLabel != null) DisplayMode.BOTH else KeysConfigHelper.getSwipeUpDisplay(key, isAsciiMode)
+                                    val swipeUpAction = gesture?.swipeUp?.action
+                                    val swipeUpDisplay = if (boundUpLabel != null) DisplayMode.BOTH else gesture?.swipeUp?.display ?: DisplayMode.BOTH
                                     val swipeUpKeyLabel =
                                         if (swipeUpDisplay != DisplayMode.BUBBLE && swipeUpHintsEnabled) swipeUpText else ""
-                                    val swipeUpCommitValue = KeysConfigHelper.getSwipeUpCommitValue(key, isAsciiMode)
+                                    val swipeUpCommitValue = KeysConfigHelper.getSwipeUpCommitValue(key, gesture?.swipeUp)
                                     val swipeDownRaw =
-                                        KeysConfigHelper.getKeyGesture(key, isAsciiMode)?.swipeDown
+                                        gesture?.swipeDown
                                     val swipeDownLabel =
                                         swipeDownRaw?.label?.takeIf { it.isNotEmpty() }
                                     val swipeDownAction = swipeDownRaw?.action
@@ -974,7 +975,7 @@ fun KeyboardLayout(
                                     val swipeDownDisplay = swipeDownRaw?.display ?: DisplayMode.BOTH
                                     val swipeDownBubbleText = if (swipeDownDisplay != DisplayMode.KEY && swipeDownHintsEnabled) swipeDownLabel else null
                                     val longPressConfig =
-                                        KeysConfigHelper.getKeyGesture(key, isAsciiMode)?.longPress
+                                        gesture?.longPress
                                     val longPressDisplay = (longPressConfig?.display ?: "key").takeIf {
                 letterLongPressMenuAllowed(key, LocalKeyboardInputPreferences.current.letterLongPressMenu ||
                     KeysConfigHelper.longPressLetters(isAsciiMode).isNotEmpty()) } ?: "key"
@@ -1711,14 +1712,15 @@ fun KeyboardRowWithConfig(
             if (index == splitAt) SplitGapSpacer(splitRow, rowGap)
             // 「按键符号」给这个键设的上下滑动作（如 Z X C V 预设）：角标写动作名，动作由 SwipeableKeyButton 套用。
             val (boundUpLabel, boundDownLabel) = letterSwipeCornerLabels(key)
-            val rawSwipeUpLabel = boundUpLabel ?: KeysConfigHelper.getSwipeUpLabel(key, isAsciiMode)
+            val gesture = KeysConfigHelper.getKeyGesture(key, isAsciiMode)
+            val rawSwipeUpLabel = boundUpLabel ?: KeysConfigHelper.getSwipeUpLabel(key, gesture?.swipeUp)
             val swipeUpText = if (swipeUpHintsEnabled) rawSwipeUpLabel else null
-            val swipeUpAction = KeysConfigHelper.getSwipeUpAction(key, isAsciiMode)
-            val swipeUpDisplay = if (boundUpLabel != null) DisplayMode.BOTH else KeysConfigHelper.getSwipeUpDisplay(key, isAsciiMode)
+            val swipeUpAction = gesture?.swipeUp?.action
+            val swipeUpDisplay = if (boundUpLabel != null) DisplayMode.BOTH else gesture?.swipeUp?.display ?: DisplayMode.BOTH
             val swipeUpKeyLabel =
                 if (swipeUpDisplay != DisplayMode.BUBBLE && swipeUpHintsEnabled) swipeUpText else ""
-            val swipeUpCommitValue = KeysConfigHelper.getSwipeUpCommitValue(key, isAsciiMode)
-            val swipeDownRaw = KeysConfigHelper.getKeyGesture(key, isAsciiMode)?.swipeDown
+            val swipeUpCommitValue = KeysConfigHelper.getSwipeUpCommitValue(key, gesture?.swipeUp)
+            val swipeDownRaw = gesture?.swipeDown
             val swipeDownLabel = swipeDownRaw?.label?.takeIf { it.isNotEmpty() }
             val swipeDownAction = swipeDownRaw?.action
             val swipeDownValue = swipeDownRaw?.value
@@ -1727,7 +1729,7 @@ fun KeyboardRowWithConfig(
                 if (swipeDownDisplay != DisplayMode.KEY && swipeDownHintsEnabled) swipeDownLabel else null
 
             // 长按选项
-            val longPressConfig = KeysConfigHelper.getKeyGesture(key, isAsciiMode)?.longPress
+            val longPressConfig = gesture?.longPress
             val longPressDisplay = (longPressConfig?.display ?: "key").takeIf {
                 letterLongPressMenuAllowed(key, LocalKeyboardInputPreferences.current.letterLongPressMenu ||
                     KeysConfigHelper.longPressLetters(isAsciiMode).isNotEmpty()) } ?: "key"
@@ -2105,14 +2107,15 @@ fun CompactKeyboardRowWithConfig(
         keys.forEach { key ->
             // 「按键符号」给这个键设的上下滑动作（如 Z X C V 预设）：角标写动作名，动作由 SwipeableKeyButton 套用。
             val (boundUpLabel, boundDownLabel) = letterSwipeCornerLabels(key)
-            val rawSwipeUpLabel = boundUpLabel ?: KeysConfigHelper.getSwipeUpLabel(key, isAsciiMode)
+            val gesture = KeysConfigHelper.getKeyGesture(key, isAsciiMode)
+            val rawSwipeUpLabel = boundUpLabel ?: KeysConfigHelper.getSwipeUpLabel(key, gesture?.swipeUp)
             val swipeUpText = if (swipeUpHintsEnabled) rawSwipeUpLabel else null
-            val swipeUpAction = KeysConfigHelper.getSwipeUpAction(key, isAsciiMode)
-            val swipeUpDisplay = if (boundUpLabel != null) DisplayMode.BOTH else KeysConfigHelper.getSwipeUpDisplay(key, isAsciiMode)
+            val swipeUpAction = gesture?.swipeUp?.action
+            val swipeUpDisplay = if (boundUpLabel != null) DisplayMode.BOTH else gesture?.swipeUp?.display ?: DisplayMode.BOTH
             val swipeUpKeyLabel =
                 if (swipeUpDisplay != DisplayMode.BUBBLE && swipeUpHintsEnabled) swipeUpText else ""
-            val swipeUpCommitValue = KeysConfigHelper.getSwipeUpCommitValue(key, isAsciiMode)
-            val swipeDownRaw = KeysConfigHelper.getKeyGesture(key, isAsciiMode)?.swipeDown
+            val swipeUpCommitValue = KeysConfigHelper.getSwipeUpCommitValue(key, gesture?.swipeUp)
+            val swipeDownRaw = gesture?.swipeDown
             val swipeDownLabel = swipeDownRaw?.label?.takeIf { it.isNotEmpty() }
             val swipeDownAction = swipeDownRaw?.action
             val swipeDownValue = swipeDownRaw?.value
@@ -2122,7 +2125,7 @@ fun CompactKeyboardRowWithConfig(
             val swipeDownKeyLabel = boundDownLabel?.takeIf { swipeDownHintsEnabled }
                 ?: if ((swipeDownDisplay == DisplayMode.KEY || swipeDownDisplay == DisplayMode.BOTH) && swipeDownHintsEnabled) swipeDownLabel else null
 
-            val longPressConfig = KeysConfigHelper.getKeyGesture(key, isAsciiMode)?.longPress
+            val longPressConfig = gesture?.longPress
             val longPressDisplay = (longPressConfig?.display ?: "key").takeIf {
                 letterLongPressMenuAllowed(key, LocalKeyboardInputPreferences.current.letterLongPressMenu ||
                     KeysConfigHelper.longPressLetters(isAsciiMode).isNotEmpty()) } ?: "key"

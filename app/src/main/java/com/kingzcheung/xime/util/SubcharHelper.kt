@@ -9,13 +9,20 @@ object SubcharHelper {
     
     private var availableSvgs: Set<String> = emptySet()
     
+    // These SVGs ship in the APK. A remounted letter keyboard must not rescan assets on Main.
+    private var loadedAssets: android.content.res.AssetManager? = null
+
+    @Synchronized
     fun init(context: Context) {
+        val assets = context.assets
+        if (assets === loadedAssets) return
         try {
-            val files = context.assets.list(SUBCHAR_DIR) ?: emptyArray()
+            val files = assets.list(SUBCHAR_DIR) ?: emptyArray()
             availableSvgs = files
                 .filter { it.endsWith(".svg") }
                 .map { it.removeSuffix(".svg") }
                 .toSet()
+            loadedAssets = assets
         } catch (e: Exception) {
             Log.w(TAG, "Failed to list subchar directory: ${e.message}")
             availableSvgs = emptySet()

@@ -16,6 +16,16 @@ class SubcharHelperTest {
         setAvailableSvgs(emptySet())
     }
 
+    @Test fun keyboardRemountDoesNotListTheSameApkAssetsAgain() {
+        val assets = org.mockito.kotlin.mock<android.content.res.AssetManager>()
+        val context = org.mockito.kotlin.mock<android.content.Context>()
+        org.mockito.kotlin.whenever(context.assets).thenReturn(assets)
+        org.mockito.kotlin.whenever(assets.list("subchar")).thenReturn(arrayOf("我.svg"))
+        repeat(3) { SubcharHelper.init(context) }
+        org.mockito.kotlin.verify(assets).list("subchar")
+        assertTrue(SubcharHelper.hasSvg("我"))
+    }
+
     @Test
     fun `hasSvg and getSvgPath return expected values`() {
         setAvailableSvgs(setOf("我", "你"))

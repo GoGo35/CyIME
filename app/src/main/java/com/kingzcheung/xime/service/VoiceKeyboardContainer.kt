@@ -98,6 +98,10 @@ class VoiceKeyboardContainer(
                 }
             }
         }
+        // Link only a switch fired during this actual UP, never a stale touch from another key.
+        if (ev?.actionMasked == MotionEvent.ACTION_UP && com.kingzcheung.xime.util.FileLogger.isVerboseLoggingEnabled()) {
+            return SwitchFrameProbe.onTouchUp(ev.eventTime) { super.dispatchTouchEvent(ev) }
+        }
         return super.dispatchTouchEvent(ev)
     }
 

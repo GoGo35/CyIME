@@ -1321,9 +1321,11 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
         }
         if (latencyKind == "letter" && hardwareEvent == null) KeyLatencyProbe.fired(service.uiState.value.inputProfile.layout.id)
         val inputContext = InputCommandOwner.requireOwner().context()
+        val frameSample = if (key == "ime_switch") SwitchFrameProbe.begin(service.uiState.value.inputSessionId) else null
         val switchQueuedAt = if (key == "ime_switch" && KeyLatencyProbe.enabled) System.nanoTime() else 0L
         val commandContext = if (submittingGlide) inputContext + glideBatch.asContextElement(true) else inputContext
         service.inputCommands.submit(commandContext, kind = latencyKind) command@{
+            frameSample?.dequeuedAt = android.os.SystemClock.uptimeMillis()
             val switchStartedAt = if (switchQueuedAt != 0L) System.nanoTime() else 0L
             KeyLatencyProbe.started()
             InputCommandOwner.requireOwner().requireCurrent(service.inputReadiness, service.uiState.value.inputSessionId)
@@ -1334,7 +1336,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
             }
             if (usesDirectFieldInput && routeDirectFieldKey(key, isShifted, hardwareEvent)) return@command
             // 双拼也读一次：辅助码开没开（` 送不送进 Rime）跟着方案走，见 [schemeCodeKey]。
-            if (service.uiState.value.inputProfile.scheme in setOf(com.kingzcheung.xime.settings.InputScheme.EXTERNAL,
+            if (key != "ime_switch" && service.uiState.value.inputProfile.scheme in setOf(com.kingzcheung.xime.settings.InputScheme.EXTERNAL,
                     com.kingzcheung.xime.settings.InputScheme.DOUBLE_PINYIN) &&
                 !service.uiState.value.isAsciiMode &&
                 !service.rimeEngine.spellerAlphabetKnown(service.uiState.value.currentSchemaId)) service.rimeEngine.warmSpellerAlphabet()
@@ -1561,7 +1563,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
             // Literal English input has no decoder work and must not wait for its lock.
             // 邻键纠错只对触屏有意义：物理键盘按键是精确的，不做邻键纠错。
             val geometry = letterNeighbors
-            service.rimeEngine.setNeighborMap(
+            if (key != "ime_switch") service.rimeEngine.setNeighborMap(
                 if (hardwareEvent == null && geometry.first == service.uiState.value.currentSchemaId) geometry.second else "")
             // 设置页的候选开关（中英混输、繁体输出、时间日期、表情、符号名、希腊字母、生僻字）：设置一变已由
             // XimeInputMethodService 的设置监听立刻写进引擎；Rime 选项随会话重建而清零，按键前再补一次。
@@ -1931,30 +1933,13 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                 "mode_change" -> {
                 }
                 "ime_switch" -> {
-                    // Preserve the existing immediate ASCII preview for the default behavior.
-                    // A configured cycle/pair may select another native language and cannot invert ASCII.
-                    val switchOptions = com.kingzcheung.xime.settings.LanguageSwitchPreferences.forRequest(
-                        com.kingzcheung.xime.settings.LanguageSwitchPreferences.read(service), languageSwitchMode)
-                    if (switchOptions.mode ==
-                        com.kingzcheung.xime.settings.LanguageSwitchMode.CURRENT_ENGLISH) {
-                        val state = service.uiState.value
-                        val schemaId = state.currentSchemaId.ifBlank { service.rimeEngine.getCurrentSchema() }
-                        val nativeLanguageEnabled = com.kingzcheung.xime.settings.InputModes.languageOf(
-                            schemaId, state.schemas) in com.kingzcheung.xime.settings.LanguagePreferences.enabled(service)
-                        val optimisticTarget = if (nativeLanguageEnabled) !state.isAsciiMode else true
-                        withEditor {
-                            service.uiState.value = service.uiState.value.copy(isAsciiMode = optimisticTarget)
-                            service.keyboardViewModel.dispatch(
-                                com.kingzcheung.xime.ui.keyboard.KeyboardDispatchAction.AsciiModeChanged(optimisticTarget, schemaId)
-                            )
-                        }
-                    }
                     // 在 key-processing 线程上执行切换：toggleAsciiMode 阻塞等待 rimeLock
                     // （部署/维护持锁时排队，完成后自动切换），不在主线程阻塞避免 ANR。
                     val t0 = System.nanoTime()
                     FileLogger.i(XimeInputMethodService.TAG, "ime_switch dispatched, ui ascii=${service.uiState.value.isAsciiMode}, thread=${Thread.currentThread().name}")
                     if (!service.schemaController.switchInputMethod(useLanguageKeyPreference = true,
-                            languageSwitchMode = languageSwitchMode)) {
+                            languageSwitchMode = languageSwitchMode, frameSample = frameSample)) {
+                        SwitchFrameProbe.discard(frameSample)
                         // 失败后继续显示引擎的实际状态。
                         val actualAscii = service.rimeEngine.isAsciiMode()
                         val actualSchema = service.rimeEngine.getCurrentSchema()
@@ -1965,7 +1950,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                             )
                         }
                     }
-                    FileLogger.i(XimeInputMethodService.TAG, "ime_switch handled in ${(System.nanoTime() - t0) / 1_000_000}ms after preview")
+                    FileLogger.i(XimeInputMethodService.TAG, "ime_switch handled in ${(System.nanoTime() - t0) / 1_000_000}ms")
                     if (switchQueuedAt != 0L) Log.d(KeyLatencyProbe.TAG, "switch queue=${(switchStartedAt - switchQueuedAt) / 1_000_000} run=${(System.nanoTime() - switchStartedAt) / 1_000_000}")
                 }
                 "abc" -> {

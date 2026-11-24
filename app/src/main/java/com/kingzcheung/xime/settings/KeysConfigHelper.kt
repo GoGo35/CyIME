@@ -2086,8 +2086,10 @@ object KeysConfigHelper {
     }
 
     /** 获取上滑显示文本（优先 label，fallback value） */
-    fun getSwipeUpLabel(key: String, isAsciiMode: Boolean = false): String? {
-        val gesture = getKeyGesture(key, isAsciiMode)?.swipeUp
+    fun getSwipeUpLabel(key: String, isAsciiMode: Boolean = false): String? =
+        getSwipeUpLabel(key, getKeyGesture(key, isAsciiMode)?.swipeUp)
+
+    internal fun getSwipeUpLabel(key: String, gesture: GestureDef?): String? {
         if (gesture != null) {
             if (gesture.label.isNotEmpty()) return gesture.label
             if (gesture.value.isNotEmpty()) return gesture.value
@@ -2097,8 +2099,10 @@ object KeysConfigHelper {
     }
 
     /** 获取上滑提交值（优先 value，fallback label） */
-    fun getSwipeUpCommitValue(key: String, isAsciiMode: Boolean = false): String? {
-        val gesture = getKeyGesture(key, isAsciiMode)?.swipeUp
+    fun getSwipeUpCommitValue(key: String, isAsciiMode: Boolean = false): String? =
+        getSwipeUpCommitValue(key, getKeyGesture(key, isAsciiMode)?.swipeUp)
+
+    internal fun getSwipeUpCommitValue(key: String, gesture: GestureDef?): String? {
         if (gesture != null) {
             if (gesture.value.isNotEmpty()) return gesture.value
             if (gesture.label.isNotEmpty()) return gesture.label

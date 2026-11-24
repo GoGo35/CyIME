@@ -2203,7 +2203,13 @@ fun KeyboardView(
                                 callbacks = if (previewLetterLayout) remember { KeyboardCallbacks(onKeyPress = { _, _ -> }, onCandidateSelect = {}) }
                                     else callbacks,
                                 onKeyPress = currentOnKeyPress,
-                                modifier = Modifier.weight(1f).then(cursorMod),
+                                modifier = Modifier.weight(1f).then(cursorMod).then(
+                                    if (!com.kingzcheung.xime.util.FileLogger.isVerboseLoggingEnabled()) Modifier
+                                    else Modifier.drawWithContent {
+                                        drawContent()
+                                        com.kingzcheung.xime.service.SwitchFrameProbe.drawn(stableUnderlayState.inputSessionId,
+                                            stableUnderlayState.currentSchemaId, stableUnderlayState.isAsciiMode, keyboardState)
+                                    }),
                                 t9Controller = t9Controller,
                             )
                             BottomLiftSpacer(renderedBottomPaddingDp, bottomLiftCursorOn, callbacks.onCursorMove)

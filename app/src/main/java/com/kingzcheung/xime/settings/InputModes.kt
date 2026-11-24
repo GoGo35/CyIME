@@ -118,6 +118,9 @@ object InputModes {
         }
     }
 
+    fun selectedProfile(context: Context, language: InputLanguage): String? =
+        SettingsPreferences.getPrefsPublic(context).getString("selected_input_profile_${language.id}", null)
+
     fun selectedProfiles(context: Context): Map<InputLanguage, String> {
         val prefs = SettingsPreferences.getPrefsPublic(context)
         return InputLanguage.entries.mapNotNull { language ->

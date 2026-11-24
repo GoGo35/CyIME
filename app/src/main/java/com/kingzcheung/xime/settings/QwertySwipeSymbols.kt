@@ -63,14 +63,22 @@ internal object QwertySwipeSymbols {
         (if (!numberRow) digits else if (english) singleNumberRowEnglishFirst else singleNumberRowFirst) +
             (if (english) singleEnglishLower else singleLower) +
             (if (numberRow && !english) singleNumberRowLower else emptyMap())
-    /** [variant] 这一套的上方预设。只显示下方的两套里，上方不显示但照样能滑出，沿用上下都显示时的上方。 */
-    fun up(english: Boolean, variant: CornerVariant): Map<String, String> =
-        if (variant.showsUp && !variant.showsDown) single(english, variant.numberRow)
-        else (if (english) englishUp else up) + (if (!variant.numberRow) emptyMap() else if (english) numberRowEnglishUp else numberRowUp)
-    /** [variant] 这一套的下方预设；不显示的一边同 [up]。开数字行时第一排下方照旧是 ! @ # …。 */
-    fun down(english: Boolean, variant: CornerVariant): Map<String, String> =
-        if (variant.showsDown && !variant.showsUp) single(english, variant.numberRow)
-        else if (english) englishDown else down
+    // Only these presets are static. Per-layout overrides, displayed corners and punctuation width
+    // are still read by apply() for the current layout. Do not merge 26-entry maps per letter.
+    private val presets = listOf(false, true).associateWith { english ->
+        CornerVariant.entries.associateWith { variant ->
+            val baseUp = if (english) englishUp else up
+            val baseDown = if (english) englishDown else down
+            val upper = when {
+                variant.showsUp && !variant.showsDown -> single(english, variant.numberRow)
+                !variant.numberRow -> baseUp
+                else -> baseUp + if (english) numberRowEnglishUp else numberRowUp
+            }
+            upper to (if (variant.showsDown && !variant.showsUp) single(english, variant.numberRow) else baseDown)
+        }
+    }
+    fun up(english: Boolean, variant: CornerVariant): Map<String, String> = presets.getValue(english).getValue(variant).first
+    fun down(english: Boolean, variant: CornerVariant): Map<String, String> = presets.getValue(english).getValue(variant).second
     fun up(english: Boolean, numberRow: Boolean = false) = up(english, if (numberRow) CornerVariant.NR_BOTH else CornerVariant.BOTH)
     fun down(english: Boolean, numberRow: Boolean = false) = down(english, if (numberRow) CornerVariant.NR_BOTH else CornerVariant.BOTH)
 
