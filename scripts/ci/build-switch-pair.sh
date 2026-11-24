@@ -39,7 +39,15 @@ PY
   echo "::group::$side: build $sha"
   if ! ./gradlew :app:assembleRelease -PversionName="$version" -PversionCode=20261515 --no-daemon --console=plain >"$RUNNER_TEMP/gradle-$side.log" 2>&1; then
     tail -120 "$RUNNER_TEMP/gradle-$side.log"
-    grep -E '^e: |^ERROR:|^> [^ ]|^Execution failed' "$RUNNER_TEMP/gradle-$side.log" | tail -20 | while IFS= read -r msg; do echo "::error::${msg//'%'/'%25'}"; done
+    python3 - "$RUNNER_TEMP/gradle-$side.log" "$side" <<'PYERR'
+import re, sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(errors="replace")
+cause = re.search(r"\* What went wrong:\s*(.+?)(?:\n\* Try:|\Z)", text, re.S)
+compiler = [s for s in text.splitlines() if s.startswith(("e: ", "ERROR:", "CMake Error"))]
+msg = "\n".join(compiler[-6:] + [cause[1].strip()[:3500] if cause else text[-2200:]])
+print("::error title=Gradle failure (" + sys.argv[2] + ")::" + msg.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
+PYERR
     exit 1
   fi
   echo '::endgroup::'
