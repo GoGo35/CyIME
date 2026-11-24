@@ -39,6 +39,7 @@ object EnglishWordMemory {
             if (lines.lastOrNull() == text) return@runCatching
             if (lines.size >= MAX_WORDS * 2) write(file, compact(lines + text)) else file.appendText("$text\n")
         }
+        cache = null
         undemote(rimeDir, text)
     }
 
@@ -88,6 +89,7 @@ object EnglishWordMemory {
             val kept = lines.filterNot { it.trim().equals(text, ignoreCase = true) }
             if (kept.size == lines.size) return false
             write(file, compact(kept))
+            cache = null
             true
         }.getOrDefault(false)
     }
@@ -111,14 +113,20 @@ object EnglishWordMemory {
     @Synchronized
     fun completions(dir: File, prefix: String, limit: Int): List<String> {
         if (prefix.length < 2 || limit <= 0) return emptyList()
+        return entries(dir).asSequence().filter { it != prefix && it.startsWith(prefix, ignoreCase = true) }.take(limit).toList()
+    }
+
+    @Synchronized
+    fun contains(dir: File, word: String) = storedWord(word) && entries(dir).any { it.equals(word, ignoreCase = true) }
+
+    private fun entries(dir: File): List<String> {
         val file = File(dir, FILE_NAME)
         val stamp = Stamp(file, file.length(), file.lastModified())
-        val words = cache?.takeIf { it.first == stamp }?.second ?: run {
+        return cache?.takeIf { it.first == stamp }?.second ?: run {
             val entries = if (file.isFile) compact(file.readLines()).asReversed() else emptyList()
             cache = stamp to entries
             entries
         }
-        return words.asSequence().filter { it != prefix && it.startsWith(prefix, ignoreCase = true) }.take(limit).toList()
     }
 
     private fun write(

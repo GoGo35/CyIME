@@ -131,6 +131,7 @@ data class CandidatePageState(
  */
 data class CandidatePageCallbacks(
     val onCandidateSelect: (CandidateEntry) -> Unit,
+    val onAssociationLongPress: ((String) -> Unit)? = null,
     val onAssociationSelect: ((Int) -> Unit)? = null,
     val onToggleSingleCharFilter: (() -> Unit)? = null,
     /** 长按候选删除自造词 */
@@ -441,6 +442,7 @@ private fun CandidatePageContent(
                                                     entry = CandidateEntry(text = candidate),
                                                     textSizeSp = candidateTextSize,
                                                     onClick = { callbacks.onAssociationSelect?.invoke(index) },
+                                                    onLongClick = callbacks.onAssociationLongPress?.let { { it(candidate) } },
                                                     textColor = state.textColor
                                                 )
                                             }

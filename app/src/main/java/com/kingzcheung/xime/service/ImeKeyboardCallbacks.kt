@@ -177,6 +177,10 @@ internal fun rememberImeKeyboardCallbacks(
             onCandidateDelete = { index ->
                 service.keyRouter.deleteCandidate(index)
             },
+            onPersonalWordForgotten = { word ->
+                val state = service.candidateState.value
+                service.candidateState.value = state.copy(associationCandidates = state.associationCandidates.filterNot { it.equals(word, true) })
+            },
             onAssociationSelect = select@{ index ->
                 val candidate = service.candidateState.value
                 if (service.uiState.value.inputProfile.scheme == com.kingzcheung.xime.settings.InputScheme.DOUBLE_PINYIN &&
