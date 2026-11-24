@@ -13,6 +13,17 @@ keytool -genkeypair -alias comparison -keyalg RSA -keysize 2048 -validity 730 -d
 printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=comparison\nkeyPassword=%s\n' "$RUNNER_TEMP/comparison.p12" "$pw" "$pw" >app/keystore.properties
 unset pw
 bt=$(dirname "$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)")
+# Upstream models no longer serves the standalone offline-translation .so required by
+# assembleRelease. Reuse the exact shipped, already-stripped ARM64 bytes on BOTH sides.
+# The release archive and the extracted library each have an independent pinned digest.
+reference="$RUNNER_TEMP/1.15.105-arm64.apk"
+export CYIME_TRANSLATE_LIB_DIR="$RUNNER_TEMP/official-translation"
+mkdir -p "$CYIME_TRANSLATE_LIB_DIR/arm64-v8a"
+curl -fsSL --retry 3 -o "$reference" https://github.com/Cyletix/CyIME/releases/download/1.15.105/CyIME-1.15.105-arm64-v8a.apk
+echo "0826e2c879b4e906449b25f17bd436389146efd0b6e4a86f3bab8cf00234bb79  $reference" | sha256sum -c -
+unzip -p "$reference" lib/arm64-v8a/libcytranslate.so > "$CYIME_TRANSLATE_LIB_DIR/arm64-v8a/libcytranslate.so"
+translate_sha=a95f931495a5e87e5af29b04b7fbee09ce7fce2231c5c1e86c2363b3a99eb252
+echo "$translate_sha  $CYIME_TRANSLATE_LIB_DIR/arm64-v8a/libcytranslate.so" | sha256sum -c -
 for side in A-base B-fork; do
   sha=$base; if [[ $side == B-fork ]]; then sha=$GITHUB_SHA; fi
   git switch --detach "$sha"
@@ -25,6 +36,10 @@ changes = {
     'app/build.gradle.kts': [('applicationId = "com.cyletix.cyime"', 'applicationId = "com.cyletix.cyime.switchpair"'),
         ('abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")', '// The ABI split below selects the sole comparison ABI.'),
         ('include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")', 'include("arm64-v8a")'), ('isUniversalApk = true', 'isUniversalApk = false')],
+    'app/build-logic/tasks-offline-translate.gradle.kts': [
+        ('"fbc9172835c1d860f146685d1e77b79e11cc2e4f2aa6c027a9e8023c88a23f55"',
+         '"a95f931495a5e87e5af29b04b7fbee09ce7fce2231c5c1e86c2363b3a99eb252"'),
+        ('    "x86_64" to "78f1b569ce0d59628a4482059dc4b8cb1714ae86bbb50ecf9833110ec3286ae4",', '')],
     'app/src/main/res/values/strings.xml': [('name="app_name" translatable="false">CyIME<', 'name="app_name" translatable="false">CyIME A/B<')],
     'app/src/main/AndroidManifest.xml': [('android:label="CyIME"', 'android:label="CyIME A/B"')],
 }
@@ -63,6 +78,7 @@ PY
 )
   name="$side-${sha:0:7}-arm64-v8a.apk"
   cp "$apk" "$out/$name"
+  [[ $(unzip -p "$out/$name" lib/arm64-v8a/libcytranslate.so | sha256sum | cut -d' ' -f1) == "$translate_sha" ]]
   "$bt/zipalign" -c -P 16 4 "$out/$name"
   "$bt/apksigner" verify --verbose --min-sdk-version 23 --print-certs "$out/$name" > "$RUNNER_TEMP/sig-$side"
   grep -Fq 'Verified using v1 scheme (JAR signing): true' "$RUNNER_TEMP/sig-$side"
@@ -73,7 +89,7 @@ PY
   if grep -q 'application-debuggable' "$RUNNER_TEMP/badging-$side"; then echo '::error::Not a release APK'; exit 1; fi
   printf '%s %s %s\n' "$side" "$sha" "$version" >> "$out/provenance.txt"
   (cd "$out"; sha256sum "$name" >> SHA256SUMS)
-  git restore -- app/build.gradle.kts app/src/main/res/values/strings.xml app/src/main/AndroidManifest.xml gradle/wrapper/gradle-wrapper.properties
+  git restore -- app/build.gradle.kts app/build-logic/tasks-offline-translate.gradle.kts app/src/main/res/values/strings.xml app/src/main/AndroidManifest.xml gradle/wrapper/gradle-wrapper.properties
   echo "Verified $name (non-debuggable, R8 mapping, v1+v2, ARM64)"
 done
 cmp <(grep 'Signer #1 certificate SHA-256 digest:' "$RUNNER_TEMP/sig-A-base") <(grep 'Signer #1 certificate SHA-256 digest:' "$RUNNER_TEMP/sig-B-fork")
