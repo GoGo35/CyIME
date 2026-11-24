@@ -18,7 +18,7 @@ import java.io.File
 
 /** 「我的图片」：只在图片还在时出现，配色和遮罩沿用选图时的主题。 */
 @RunWith(AndroidJUnit4::class)
-@Config(application = android.app.Application::class)
+@Config(sdk = [34], application = android.app.Application::class)
 class CustomImageThemeTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val themes = KeyboardThemes.themes.filter { it.id != CustomImageTheme.ID }
