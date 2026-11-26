@@ -17,10 +17,10 @@ internal class ActionTiming private constructor(action: String) {
 
     fun finish() {
         mark("tail")
-        FileLogger.i("CyIME107Timing", phases.append(" total=").append((previous - start) / 1_000).toString())
+        FileLogger.w("CyIME107Timing", phases.append(" total=").append((previous - start) / 1_000).toString())
     }
 
     companion object {
-        fun begin(action: String): ActionTiming? = if (FileLogger.isVerboseLoggingEnabled()) ActionTiming(action) else null
+        fun begin(action: String): ActionTiming = ActionTiming(action)
     }
 }
