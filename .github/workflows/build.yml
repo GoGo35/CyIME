@@ -1,107 +1,70 @@
-﻿name: Build and Test APK
-
+name: 107 Debug pair (timed)
 on:
-  push:
-    branches:
-      - main
-      - dev*
-  pull_request:
   workflow_dispatch:
-
 permissions:
   contents: read
-  checks: write
-
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    
+  pair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      BASE: 686c269852f1fac76b37576aec9b3c451ddad88e
+      FORK: fd6f59d9a4c4587f47cd1d0f2f82d0421ef9c87f
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
-          submodules: recursive
           fetch-depth: 0
-        
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
-          cache: 'gradle'
-          
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-        
-      - name: Install NDK
+      - name: Prepare SDK and tools
+        id: prepare
         run: |
-          sdkmanager "ndk;29.0.14206865"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
-          echo "ANDROID_NDK=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
-        
-      - name: Install build tools
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;29.0.14206865' 'build-tools;36.0.0' 'platforms;android-36' 'cmake;3.22.1'
+          cp scripts/ci/time-debug107.py "$RUNNER_TEMP/time-debug107.py"
+          git cat-file -e "$BASE^{commit}"
+          git cat-file -e "$FORK^{commit}"
+      - name: Check out A (official source)
+        run: git switch --detach "$BASE"
+      - name: Gradle A and verify APK
+        run: python3 "$RUNNER_TEMP/time-debug107.py" A-base "$RUNNER_TEMP/pair107"
+      - name: Check out B (feature source)
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: git switch --detach "$FORK"
+      - name: Gradle B and verify APK
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build
-          
-      - name: Cache native deps
-        uses: actions/cache@v6
-        with:
-          path: |
-            app/src/main/jni/onnxruntime
-            app/src/main/jniLibs/**/libonnxruntime.so
-          key: native-${{ runner.os }}-${{ hashFiles('app/build-logic/tasks-native.gradle.kts') }}
-          restore-keys: |
-            native-${{ runner.os }}-
-
-      - name: Download native deps (ONNX Runtime)
-        run: ./gradlew downloadOnnx --no-daemon
-        
-      - name: Cache CMake build
-        uses: actions/cache@v6
-        with:
-          path: |
-            app/.cxx
-            app/src/main/jni/boost
-            app/src/main/jni/boost-*.tar.xz
-          key: cmake-${{ runner.os }}-${{ hashFiles('app/src/main/jni/CMakeLists.txt') }}
-          restore-keys: |
-            cmake-${{ runner.os }}-
-            
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-        
-      - name: Run Unit Tests
-        run: ./gradlew :app:testDebugUnitTest :plugin-core:testDebugUnitTest --no-daemon
-        
-      - name: Generate Test Report
+          test "$(git rev-parse HEAD)" = "$FORK"
+          python3 "$RUNNER_TEMP/time-debug107.py" B-fork "$RUNNER_TEMP/pair107"
+      - name: Publish measured Gradle times
+        id: times
         if: always()
-        uses: mikepenz/action-junit-report@v6
-        with:
-          report_paths: '**/build/test-results/testDebugUnitTest/*.xml'
-          fail_on_failure: true
-          
-      - name: Upload Test Results
+        shell: python
+        run: |
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'pair107'
+          parts = []
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as md:
+              print('| Source | Commit | Gradle seconds | APK verified |', '|---|---|---:|---|', sep='\n', file=md)
+              for side in ('A-base', 'B-fork'):
+                  path = root / (side + '.json')
+                  rec = json.loads(path.read_text()) if path.exists() else {}
+                  elapsed = rec.get('gradle_seconds', 'n/a')
+                  verified = rec.get('verified', False)
+                  print(f"| {side} | {rec.get('commit', '-')[:9]} | {elapsed} | {verified} |", file=md)
+                  parts.append(side[0] + (f'{elapsed}s' if verified else '-incomplete'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
+              print('label=' + '-'.join(parts), file=fh)
+      - name: Upload APKs and timing records
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: unit-test-results
-          path: app/build/test-results/testDebugUnitTest/
-          retention-days: 7
-          
-      - name: Build Debug APKs
-        run: ./gradlew assembleDebug --no-daemon
-
-      - name: Build Plugin XIPKs
-        run: bash scripts/build-plugins.sh
-
-      - name: Upload Debug APKs
-        uses: actions/upload-artifact@v7
-        with:
-          name: debug-apks
-          path: |
-            app/build/outputs/apk/debug/*.apk
-            build/plugin-release/*.xipk
-          retention-days: 7
+          name: CyIME-107-debug-pair-arm64-${{ steps.times.outputs.label }}
+          path: ${{ runner.temp }}/pair107/
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
