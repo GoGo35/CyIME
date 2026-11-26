@@ -9,6 +9,7 @@ import com.kingzcheung.xime.rime.resolveRimeCandidateIndex
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.keyboard.KeyboardLayoutState
 import com.kingzcheung.xime.ui.keyboard.isT9Schema
+import com.kingzcheung.xime.util.ActionTiming
 import com.kingzcheung.xime.util.FileLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -1417,7 +1418,9 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
         val inputContext = InputCommandOwner.requireOwner().context()
         val switchQueuedAt = if (key == "ime_switch" && KeyLatencyProbe.enabled) System.nanoTime() else 0L
         val commandContext = if (submittingGlide) inputContext + glideBatch.asContextElement(true) else inputContext
+        val timing = if (key == "ime_switch") ActionTiming.begin("switch") else null
         service.inputCommands.submit(commandContext, kind = latencyKind) command@{
+            timing?.mark("queue")
             val switchStartedAt = if (switchQueuedAt != 0L) System.nanoTime() else 0L
             KeyLatencyProbe.started()
             InputCommandOwner.requireOwner().requireCurrent(service.inputReadiness, service.uiState.value.inputSessionId)
@@ -2030,6 +2033,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                 "mode_change" -> {
                 }
                 "ime_switch" -> {
+                    timing?.mark("route")
                     // Preserve the existing immediate ASCII preview for the default behavior.
                     // A configured cycle/pair may select another native language and cannot invert ASCII.
                     val switchOptions = com.kingzcheung.xime.settings.LanguageSwitchPreferences.forRequest(
@@ -2050,10 +2054,11 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     }
                     // 在 key-processing 线程上执行切换：toggleAsciiMode 阻塞等待 rimeLock
                     // （部署/维护持锁时排队，完成后自动切换），不在主线程阻塞避免 ANR。
+                    timing?.mark("preview")
                     val t0 = System.nanoTime()
                     FileLogger.i(XimeInputMethodService.TAG, "ime_switch dispatched, ui ascii=${service.uiState.value.isAsciiMode}, thread=${Thread.currentThread().name}")
                     if (!service.schemaController.switchInputMethod(useLanguageKeyPreference = true,
-                            languageSwitchMode = languageSwitchMode)) {
+                            languageSwitchMode = languageSwitchMode, timing = timing)) {
                         // 失败后继续显示引擎的实际状态。
                         val actualAscii = service.rimeEngine.isAsciiMode()
                         val actualSchema = service.rimeEngine.getCurrentSchema()
@@ -2064,6 +2069,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                             )
                         }
                     }
+                    timing?.finish()
                     FileLogger.i(XimeInputMethodService.TAG, "ime_switch handled in ${(System.nanoTime() - t0) / 1_000_000}ms after preview")
                     if (switchQueuedAt != 0L) Log.d(KeyLatencyProbe.TAG, "switch queue=${(switchStartedAt - switchQueuedAt) / 1_000_000} run=${(System.nanoTime() - switchStartedAt) / 1_000_000}")
                 }
@@ -2786,10 +2792,13 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
         val hold = com.kingzcheung.xime.keyboard.RepeatInput.current.get()
         if (hold != null && !hold.acquire()) return
         val queuedAt = if (KeyLatencyProbe.enabled) android.os.SystemClock.uptimeMillis() else 0L
+        val timing = ActionTiming.begin(if (hold == null) "delete_tap" else "delete_repeat")
         postRimeJob("delete") {
+            timing?.mark("queue")
             val startedAt = if (queuedAt != 0L) android.os.SystemClock.uptimeMillis() else 0L
-            try { if (!hasPendingCandidateCommit && hold?.isActive != false) processDeleteKey(hold) }
+            try { if (!hasPendingCandidateCommit && hold?.isActive != false) processDeleteKey(hold, timing) }
             finally {
+                timing?.finish()
                 hold?.completed()
                 // 退格排队等了多久（前面有补算、解码时会变长）、自己算了多久；只在打开延迟探针时记。
                 if (queuedAt != 0L) android.util.Log.d(KeyLatencyProbe.TAG, "delete queue=${startedAt - queuedAt} " +
@@ -2799,7 +2808,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
     }
 
     /** 单次退格处理（service.keyProcessingDispatcher 上执行）。 */
-    internal suspend fun processDeleteKey(hold: com.kingzcheung.xime.keyboard.RepeatInput?) {
+    internal suspend fun processDeleteKey(hold: com.kingzcheung.xime.keyboard.RepeatInput?, timing: ActionTiming? = null) {
         val owner = service.uiState.value.inputSessionId
         englishLookup?.cancel()
         // 退格照常删掉自动补的空格；之后再打标点、空格不再按自动空格处理。
@@ -2856,6 +2865,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                 candState.isShowingRecentClipboard,
             predictionPending = predictionWasPending,
         ).skippingAssociation(SettingsPreferences.isDeleteSkipsAssociation(service), candState.isShowingRecentClipboard)
+        timing?.mark("choose_target")
         if (target == DeletionTarget.WAIT) return
         if (hold?.allowsDeletion(target.consumesImeContent) == false) return
         if (target == DeletionTarget.COMPOSITION && chineseGlideDeleteEnabled()) {
@@ -2980,7 +2990,9 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
 
                 var deletedBefore: Pair<String, String>? = null
                 var digitsBefore: String? = null
+                timing?.mark("before_editor")
                 val rejected = withEditor {
+                    timing?.mark("editor_wait")
 
                     if (owner != service.uiState.value.inputSessionId) return@withEditor null
                     val word = rejectedCommitBefore(clearing = false)
@@ -2990,6 +3002,7 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
                     service.sendDeleteKey()
                     word
                 }
+                timing?.mark("editor_delete")
                 rejected?.let(::unlearnRejectedCommit)
 
                 val recovery = deletedBefore?.let { (deleted, remaining) ->
