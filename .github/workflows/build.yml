@@ -1,107 +1,52 @@
-﻿name: Build and Test APK
-
+name: Feature 107 Release pair
 on:
   push:
-    branches:
-      - main
-      - dev*
-  pull_request:
+    branches: [feature107-release-pair]
   workflow_dispatch:
-
 permissions:
   contents: read
-  checks: write
-
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 0
-        
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
+          persist-credentials: false
+      - uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
-          cache: 'gradle'
-          
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-        
-      - name: Install NDK
+      - name: Prepare common SDK and ephemeral comparison signer
         run: |
-          sdkmanager "ndk;29.0.14206865"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
-          echo "ANDROID_NDK=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
-        
-      - name: Install build tools
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;29.0.14206865' 'build-tools;36.0.0' 'platforms;android-36' 'cmake;3.22.1'
+          keytool -genkeypair -keystore "$RUNNER_TEMP/pair.jks" -storepass android -keypass android -alias pair -keyalg RSA -keysize 3072 -validity 3650 -dname CN=CyIME-Test
+          mkdir -p "$RUNNER_TEMP/apks"
+      - name: Build and verify both release APKs
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build
-          
-      - name: Cache native deps
-        uses: actions/cache@v6
+          set -euo pipefail
+          bt="$ANDROID_HOME/build-tools/36.0.0"
+          for side in no-probe probe; do
+            if [ "$side" = no-probe ]; then git switch --detach 792f38458f8bfee3406613dc198ae49067f01974; else git switch --detach 9ab0367bb9d3510d371b4fcb40e9b3d5915d5250; fi
+            printf 'storeFile=%s\nstorePassword=android\nkeyAlias=pair\nkeyPassword=android\n' "$RUNNER_TEMP/pair.jks" > app/keystore.properties
+            bash gradlew -I scripts/phone-release-abi.gradle -PcyimeReleaseAbi=arm64-v8a :app:assembleRelease --console=plain --max-workers=2 -x :app:prepareOfflineTranslateLibraries
+            mapfile -t files < <(find app/build/outputs/apk/release -name '*.apk'); test ${#files[@]} = 1
+            out="$RUNNER_TEMP/apks/CyIME-feature-1.15.107-arm64-release-$side.apk"; cp "${files[0]}" "$out"
+            "$bt/aapt" dump badging "$out" > "$RUNNER_TEMP/badging"; grep "package: name='com.cyletix.cyime' versionCode='20261548' versionName='1.15.107'" "$RUNNER_TEMP/badging"; grep -Fx "native-code: 'arm64-v8a'" "$RUNNER_TEMP/badging"; if grep -q application-debuggable "$RUNNER_TEMP/badging"; then exit 1; fi
+            "$bt/apksigner" verify --print-certs "$out" | grep 'certificate SHA-256 digest' > "$RUNNER_TEMP/$side.cert"
+            python3 - "$out" "$side" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              assert any(b'CyIME107Timing' in z.read(n) for n in z.namelist() if n.startswith('classes') and n.endswith('.dex')) == (sys.argv[2]=='probe')
+          PY
+          done
+          cmp "$RUNNER_TEMP/no-probe.cert" "$RUNNER_TEMP/probe.cert"
+          cd "$RUNNER_TEMP/apks"; sha256sum *.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v7
         with:
-          path: |
-            app/src/main/jni/onnxruntime
-            app/src/main/jniLibs/**/libonnxruntime.so
-          key: native-${{ runner.os }}-${{ hashFiles('app/build-logic/tasks-native.gradle.kts') }}
-          restore-keys: |
-            native-${{ runner.os }}-
-
-      - name: Download native deps (ONNX Runtime)
-        run: ./gradlew downloadOnnx --no-daemon
-        
-      - name: Cache CMake build
-        uses: actions/cache@v6
-        with:
-          path: |
-            app/.cxx
-            app/src/main/jni/boost
-            app/src/main/jni/boost-*.tar.xz
-          key: cmake-${{ runner.os }}-${{ hashFiles('app/src/main/jni/CMakeLists.txt') }}
-          restore-keys: |
-            cmake-${{ runner.os }}-
-            
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-        
-      - name: Run Unit Tests
-        run: ./gradlew :app:testDebugUnitTest :plugin-core:testDebugUnitTest --no-daemon
-        
-      - name: Generate Test Report
-        if: always()
-        uses: mikepenz/action-junit-report@v6
-        with:
-          report_paths: '**/build/test-results/testDebugUnitTest/*.xml'
-          fail_on_failure: true
-          
-      - name: Upload Test Results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: unit-test-results
-          path: app/build/test-results/testDebugUnitTest/
-          retention-days: 7
-          
-      - name: Build Debug APKs
-        run: ./gradlew assembleDebug --no-daemon
-
-      - name: Build Plugin XIPKs
-        run: bash scripts/build-plugins.sh
-
-      - name: Upload Debug APKs
-        uses: actions/upload-artifact@v7
-        with:
-          name: debug-apks
-          path: |
-            app/build/outputs/apk/debug/*.apk
-            build/plugin-release/*.xipk
-          retention-days: 7
+          name: CyIME-feature-107-Release-pair-arm64
+          path: ${{ runner.temp }}/apks/
+          compression-level: 0
+          retention-days: 14
