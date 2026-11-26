@@ -63,8 +63,8 @@ class RimeFileImportTest {
         val archive = File(app.cacheDir, "example-main.zip")
         ZipOutputStream(archive.outputStream()).use { zip ->
             for ((name, content) in mapOf("example.schema.yaml" to schema,
-                    "aux.schema.yaml" to "schema:\n  schema_id: aux\n  name: AAA\n",
-                    "default.yaml" to "schema_list:\n  - schema: example\n  - schema: aux\n",
+                    "sidecar.schema.yaml" to "schema:\n  schema_id: sidecar\n  name: Sidecar\n",
+                    "default.yaml" to "schema_list:\n  - schema: example\n  - schema: sidecar\n",
                     "dicts/table.dict.yaml" to "dictionary")) {
                 zip.putNextEntry(ZipEntry("publish/rime/$name"))
                 zip.write(content.toByteArray())
@@ -81,7 +81,7 @@ class RimeFileImportTest {
         assertFalse(File(rime, "publish/fcitx/table.txt").exists())
         val enabled = SchemaManager.getEnabledSchemas(app)
         assertTrue("example" in enabled && "current" in enabled)
-        assertFalse("aux" in enabled)
+        assertFalse("sidecar" in enabled)
         assertTrue(userDefaults.readText().contains("config_version: 'local'"))
 
         val replacement = File(app.cacheDir, "example.schema.yaml.TXT").apply { writeText(schema + "# changed\n") }

@@ -43,7 +43,7 @@ object DictionaryExport {
     private val gbk: Charset by lazy { Charset.forName("GBK") }
 
     /** 英文词能写进的格式（见上）。 */
-    fun keepsEnglish(format: Format): Boolean = format == Format.TEXT || format == Format.RIME
+    fun keepsEnglish(format: Format): Boolean = format == Format.CYIME || format == Format.TEXT || format == Format.RIME
 
     private val english = Regex("[A-Za-z0-9][A-Za-z0-9 '._&+-]{0,62}")
 
@@ -73,7 +73,7 @@ object DictionaryExport {
         }
         val englishLines = englishWords.joinToString("") { "$it\t${CellDictionaryEnglish.letters(it)}\t1\n" }
         val bytes = when (format) {
-            Format.CYIME -> json(name, rows).toByteArray(Charsets.UTF_8)
+            Format.CYIME -> json(name, rows, englishWords.toList()).toByteArray(Charsets.UTF_8)
             Format.TEXT -> (lines(rows, "\n") { (w, p, c) -> "$w\t${p.joinToString(" ")}\t$c" } + englishLines)
                 .toByteArray(Charsets.UTF_8)
             Format.RIME -> (rimeHeader() + lines(rows, "\n") { (w, p, c) -> "$w\t${p.joinToString(" ")}\t$c" } + englishLines)
@@ -97,7 +97,7 @@ object DictionaryExport {
     private fun rimeHeader() = "# CyIME 导出的词库\n---\nname: cyime_export\nversion: \"1\"\nsort: by_weight\n...\n"
 
     /** cyime.dictionary.v1：手机「导入词库」和电脑版「词库管理 › 导入词库」都认。 */
-    private fun json(name: String, rows: List<Triple<String, List<String>, Int>>): String = buildString {
+    private fun json(name: String, rows: List<Triple<String, List<String>, Int>>, englishWords: List<String>): String = buildString {
         val title = name.filterNot { it.isISOControl() }.trim().take(100).ifBlank { "CyIME 词库" }
         append("{\"format\":\"cyime.dictionary.v1\",\"name\":").append(quote(title))
         append(",\"language\":\"zh\",\"scheme\":\"pinyin\",\"entries\":[")
@@ -105,7 +105,12 @@ object DictionaryExport {
             if (index > 0) append(',')
             append("\n{\"word\":").append(quote(w)).append(",\"code\":").append(quote(p.joinToString(" "))).append('}')
         }
-        append("\n]}\n")
+        append("],\"english\":[")
+        englishWords.forEachIndexed { index, word ->
+            if (index > 0) append(',')
+            append(quote(word))
+        }
+        append("]}\n")
     }
 
     private fun quote(text: String): String = buildString {

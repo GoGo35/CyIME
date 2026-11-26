@@ -33,12 +33,25 @@ object EnglishWordMemory {
         undemote(rimeDir, text)
         // A word, or a word with digits after it (Abc123 + Enter, 11-25).
         if (!STORED.matches(text) || !isLearnable(text.trimEnd { it in '0'..'9' })) return
+        rememberStored(rimeDir, text)
+    }
+
+    /** Records a selected custom word, including a validated email address. */
+    @Synchronized
+    fun rememberSelected(rimeDir: File, text: String) {
+        if (!storedWord(text)) return
+        undemote(rimeDir, text)
+        rememberStored(rimeDir, text)
+    }
+
+    private fun rememberStored(rimeDir: File, text: String) {
         val file = File(rimeDir, FILE_NAME)
         runCatching {
             val lines = if (file.exists()) file.readLines() else emptyList()
-            if (lines.lastOrNull() == text) return
+            if (lines.lastOrNull() == text) return@runCatching
             if (lines.size >= MAX_WORDS * 2) write(file, compact(lines + text)) else file.appendText("$text\n")
         }
+        cache = null
     }
 
     /**
@@ -128,7 +141,7 @@ object EnglishWordMemory {
     @Synchronized
     fun forget(rimeDir: File, text: String): Boolean {
         val file = File(rimeDir, FILE_NAME)
-        if (!STORED.matches(text) || !file.exists()) return false
+        if (!storedWord(text) || !file.exists()) return false
         return runCatching {
             val lines = file.readLines()
             val kept = lines.filterNot { it.trim().equals(text, ignoreCase = true) }
@@ -140,7 +153,36 @@ object EnglishWordMemory {
 
     /** Latest spelling of each word last, at most [MAX_WORDS]. */
     internal fun compact(lines: List<String>): List<String> =
-        lines.map { it.trim() }.filter { STORED.matches(it) }.asReversed().distinct().take(MAX_WORDS).asReversed()
+        lines.map { it.trim() }.filter(::storedWord).asReversed().distinct().take(MAX_WORDS).asReversed()
+
+    private fun storedWord(text: String) = STORED.matches(text) || EmailWordMemory.isValid(text)
+
+    private data class Stamp(val file: File, val size: Long, val modified: Long)
+    private var cache: Pair<Stamp, List<String>>? = null
+
+    /** Reads the personal candidates on an IO dispatcher; cache invalidates on file changes. */
+    @Synchronized
+    fun completions(dir: File, prefix: String, limit: Int): List<String> {
+        if (prefix.length < 2 || limit <= 0) return emptyList()
+        return entries(dir).asSequence()
+            .filter { it != prefix && it.startsWith(prefix, ignoreCase = true) }
+            .take(limit)
+            .toList()
+    }
+
+    @Synchronized
+    fun contains(dir: File, word: String): Boolean =
+        storedWord(word) && entries(dir).any { it.equals(word, ignoreCase = true) }
+
+    private fun entries(dir: File): List<String> {
+        val file = File(dir, FILE_NAME)
+        val stamp = Stamp(file, file.length(), file.lastModified())
+        return cache?.takeIf { it.first == stamp }?.second ?: run {
+            val entries = if (file.isFile) compact(file.readLines()).asReversed() else emptyList()
+            cache = stamp to entries
+            entries
+        }
+    }
 
     private fun write(file: File, words: List<String>) {
         val tmp = File(file.parentFile, "${file.name}.tmp")

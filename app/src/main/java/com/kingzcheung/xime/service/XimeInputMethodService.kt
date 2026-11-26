@@ -4033,6 +4033,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     private var lastStartWantedNumberPanel: Boolean? = null
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
+        keyRouter.resetManualEmail()
         endGlidePreview()
         super.onStartInput(attribute, restarting)
         digitSeparatorGuess.reset()
@@ -4786,6 +4787,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
         EnterKeyAction.label(editorInfo.imeOptions, appSend = SettingsPreferences.isEnterSendsEnabled(this))
 
     override fun onFinishInput() {
+        keyRouter.manualEmailKey(null)
         gameShowExplicit = false
         suspendCompositionForScreenOff()
         endGlidePreview()
@@ -6084,6 +6086,7 @@ class XimeInputMethodService : InputMethodService(), LifecycleOwner, SavedStateR
     }
 
     internal fun dismissPredictionsForPaste() {
+        keyRouter.resetManualEmail()
         predictionManager.invalidatePendingPredictions()
         candidateState.value = candidateState.value.copy(
             associationCandidates = emptyList(), pendingEnglishText = "",

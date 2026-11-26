@@ -44,6 +44,7 @@ internal object TerminalEditor {
 
     /** 编辑面板与手势里的光标动作在终端里对应的按键；选择类动作终端没有选区，按普通移动处理。 */
     fun keyForEditingAction(action: String): Int? = when (action) {
+        "forward_delete" -> KeyEvent.KEYCODE_FORWARD_DEL
         "arrow_left", "select_arrow_left" -> KeyEvent.KEYCODE_DPAD_LEFT
         "arrow_right", "select_arrow_right" -> KeyEvent.KEYCODE_DPAD_RIGHT
         "arrow_up", "select_arrow_up" -> KeyEvent.KEYCODE_DPAD_UP

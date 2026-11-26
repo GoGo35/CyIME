@@ -66,6 +66,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.drop
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
@@ -708,6 +709,29 @@ fun KeyboardView(
         // 长按删除待确认项：词文本 + 确认后执行（候选栏/展开页共用同一确认覆盖层）
         // 换输入框、关掉再打开键盘或候选变化后，未确认的删除自动取消，避免回来后误点。
         var deletePending by remember(state.inputSessionId) { mutableStateOf<DeletePendingWord?>(null) }
+        val personalScope = androidx.compose.runtime.key(state.inputSessionId) { rememberCoroutineScope() }
+        fun personalLongPress(snapshot: com.kingzcheung.xime.service.CandidateState): ((String) -> Unit)? {
+            if (snapshot.pendingEnglishText.isEmpty() || !snapshot.englishReplaceSupported ||
+                com.kingzcheung.xime.settings.IncognitoState.active) return null
+            return { word -> personalScope.launch {
+                fun current() = candidateState.value.let { it.pendingEnglishText == snapshot.pendingEnglishText &&
+                    (it.pendingEnglishText == word || word in it.associationCandidates) } &&
+                    !com.kingzcheung.xime.settings.IncognitoState.active
+                val dir = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.kingzcheung.xime.settings.SchemaManager.getRimeDir(keyboardContext)
+                }
+                val memory = com.kingzcheung.xime.settings.EnglishWordMemory
+                if (current() && kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { memory.contains(dir, word) } && current()) {
+                    onHapticFeedback?.invoke()
+                    deletePending = DeletePendingWord(word, "忘记自造词「$word」？内置词仍可正常输入。") {
+                        if (current()) personalScope.launch {
+                            val removed = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { memory.forget(dir, word) }
+                            if (removed && current()) callbacks.onPersonalWordForgotten?.invoke(word)
+                        }
+                    }
+                }
+            }; Unit }
+        }
         // 候选变化就取消待确认的删除。用观察代替把候选状态当 remember 的 key：在这一层读候选状态，
         // 每按一个键都会让整块键盘重组（1.12.36 实测每键约 30 帧）。
         LaunchedEffect(state.inputSessionId) {
@@ -1801,6 +1825,7 @@ fun KeyboardView(
                             callbacks.onClipboardSelect?.invoke(candidateState.value.inputText)
                         }
                     },
+                    onAssociationLongPress = if (!showHandwritingCandidates && englishGlide == null && liveGlide == null) personalLongPress(cs) else null,
                     onAssociationSelect = select@{ index ->
                         if (englishGlide != null || liveGlide != null) return@select
                         if (showHandwritingCandidates && index in handwritingCandidates.indices) {
@@ -1985,6 +2010,7 @@ fun KeyboardView(
                             viewModel.toggleSingleCharFilter()
                             if (viewModel.singleCharFilter.value) callbacks.onSingleCharFilterOn?.invoke()
                         }.takeIf { sentenceEdit == null && (cs.isComposing || cs.candidates.isNotEmpty()) },
+                        onAssociationLongPress = personalLongPress(cs),
                         onAssociationSelect = select@{ index ->
                             val sourceIndex = index + barAssociationCount
                             val word = barAssociationWords.getOrNull(sourceIndex) ?: return@select
