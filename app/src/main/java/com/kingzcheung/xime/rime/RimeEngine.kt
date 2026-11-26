@@ -1,5 +1,6 @@
 package com.kingzcheung.xime.rime
 
+import com.kingzcheung.xime.util.ActionTiming
 import com.kingzcheung.xime.util.FileLogger
 import android.util.Log
 import java.io.File
@@ -1042,12 +1043,19 @@ class RimeEngine {
         if (nativeIsAsciiMode() && nativeGetOption("full_shape")) nativeSetOption("full_shape", false)
     }
 
-    fun toggleAsciiMode(): Boolean {
+    fun toggleAsciiMode(): Boolean = toggleAsciiMode(null)
+
+    internal fun toggleAsciiMode(timing: ActionTiming?): Boolean {
         // 用户显式切换操作：阻塞等待锁（部署/维护持锁时排队，完成后自动切换），
         // 不静默失败；调用方保证不在主线程执行（ImeKeyRouter 的 key-process 线程）。
         return mutateLocked {
             if (!nativeHasSession() && !createSession()) return@mutateLocked false
-            nativeToggleAsciiMode().also { enforceAsciiWidth() }
+            timing?.mark("lock_and_session")
+            nativeToggleAsciiMode().also {
+                timing?.mark("native_toggle")
+                enforceAsciiWidth()
+                timing?.mark("enforce_width")
+            }
         }
     }
 
