@@ -23,6 +23,7 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Prepare SDK and tools
+        id: prepare
         run: |
           sdkmanager 'ndk;29.0.14206865' 'build-tools;36.0.0' 'platforms;android-36' 'cmake;3.22.1'
           cp scripts/ci/time-debug107.py "$RUNNER_TEMP/time-debug107.py"
@@ -33,18 +34,38 @@ jobs:
       - name: Gradle A and verify APK
         run: python3 "$RUNNER_TEMP/time-debug107.py" A-base "$RUNNER_TEMP/pair107"
       - name: Check out B (feature source)
-        if: ${{ !cancelled() && (success() || failure()) }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         run: git switch --detach "$FORK"
       - name: Gradle B and verify APK
-        if: ${{ !cancelled() && (success() || failure()) }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         run: |
           test "$(git rev-parse HEAD)" = "$FORK"
           python3 "$RUNNER_TEMP/time-debug107.py" B-fork "$RUNNER_TEMP/pair107"
+      - name: Publish measured Gradle times
+        id: times
+        if: always()
+        shell: python
+        run: |
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'pair107'
+          parts = []
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as md:
+              print('| Source | Commit | Gradle seconds | APK verified |', '|---|---|---:|---|', sep='\n', file=md)
+              for side in ('A-base', 'B-fork'):
+                  path = root / (side + '.json')
+                  rec = json.loads(path.read_text()) if path.exists() else {}
+                  elapsed = rec.get('gradle_seconds', 'n/a')
+                  verified = rec.get('verified', False)
+                  print(f"| {side} | {rec.get('commit', '-')[:9]} | {elapsed} | {verified} |", file=md)
+                  parts.append(side[0] + (f'{elapsed}s' if verified else '-incomplete'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
+              print('label=' + '-'.join(parts), file=fh)
       - name: Upload APKs and timing records
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CyIME-107-debug-pair-arm64
+          name: CyIME-107-debug-pair-arm64-${{ steps.times.outputs.label }}
           path: ${{ runner.temp }}/pair107/
           compression-level: 0
           if-no-files-found: error
