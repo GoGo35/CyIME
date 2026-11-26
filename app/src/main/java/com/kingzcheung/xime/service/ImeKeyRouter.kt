@@ -2717,7 +2717,6 @@ internal class ImeKeyRouter(private val service: XimeInputMethodService) {
         }
         associationWordAt(state, index)?.let(com.kingzcheung.xime.stats.TypingStats::onAssociationPicked)
         if (autoSpace) associationWordAt(state, index)?.let(englishAutoSpace::arm)
-        val picked = associationWordAt(state, index)
         // 英文下一词没自动加空格：选的词当作刚打的词，接着打字母是在改它，按空格再出下一批。
         val pending = if (nextWordPick && !autoSpace && picked != null && EnglishNextWords.key(picked) != null) picked else ""
         service.candidateState.value = service.candidateState.value.copy(

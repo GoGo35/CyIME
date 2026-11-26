@@ -39,11 +39,12 @@ class CustomWordTest {
         assertNull(run.finish("") { "a@x.com" to ".uk" })
     }
 
-    @Test fun englishOnlyPackRoundTripsEveryFormat() {
+    @Test fun englishOnlyPackRoundTripsEnglishCapableFormats() {
         val english = listOf("about", "Team Spirit", "CyIME")
         val parsed = TxtCellDictionary.parse("'a'b'o'u't about\nTeam Spirit\nCyIME\n".toByteArray())
         assertEquals(english, parsed.english)
-        for (format in DictionaryExport.Format.entries) {
+        // Other external IME formats are Chinese-only; CYIME, text, and Rime preserve English entries.
+        for (format in listOf(DictionaryExport.Format.CYIME, DictionaryExport.Format.TEXT, DictionaryExport.Format.RIME)) {
             val output = DictionaryExport.write(format, "test", english.map { DictEntry(it, "") })
             assertEquals(format.name, 3, output.written)
             val result = if (format == DictionaryExport.Format.CYIME) JsonCellDictionary.parse(output.bytes) else {
