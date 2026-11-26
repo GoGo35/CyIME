@@ -17,6 +17,24 @@ test -s "$dir/libcytranslate.so"
 test ! -e app/keystore.properties
 flags=(-I scripts/phone-release-abi.gradle -PcyimeReleaseAbi=arm64-v8a
        --console=plain --max-workers=2 -x :app:prepareOfflineTranslateLibraries)
+# Robolectric resolves the same SDK on first use in hundreds of tests. Fetch it
+# once into its normal Maven cache; fail here, not 877 times, on a network error.
+sdkver=14-robolectric-10818077-i7
+maven_path=org/robolectric/android-all-instrumented/$sdkver
+maven_file=android-all-instrumented-$sdkver
+mirror=https://repo.maven.apache.org/maven2
+(
+  mkdir -p "$HOME/.m2/repository/$maven_path"
+  cd "$HOME/.m2/repository/$maven_path"
+  for ext in pom jar; do
+    curl -fsSL --retry 3 --retry-max-time 120 \
+      "$mirror/$maven_path/$maven_file.$ext" -o "$maven_file.$ext"
+  done
+  sha512sum --check <<SUMS
+fb97a3028bb1eb4c4b3d1ab9c23c8b6b245842139f76194afc16afe002a212c2f93baff400a83cb6f35e525d0753e5b13aeda172fbdf0f628b25d21aa4a065d6  $maven_file.pom
+7cdc0b1306e7865f1acd25a363073149654caee5b8e278c5ae37ff4724185724eff39f0b0111800b521e640bb28698d9d2e655134a801569a0f07470e7b5f455  $maven_file.jar
+SUMS
+)
 bash gradlew "${flags[@]}" -I scripts/personal-108-tests.gradle \
   :app:testDebugUnitTest :plugin-core:testDebugUnitTest
 bash gradlew "${flags[@]}" :app:assembleRelease
