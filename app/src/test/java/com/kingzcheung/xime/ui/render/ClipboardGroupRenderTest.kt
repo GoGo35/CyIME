@@ -8,6 +8,9 @@ import com.kingzcheung.xime.ui.settings.ClipboardGroupSettingsContent
 import androidx.compose.ui.test.onNodeWithText
 import com.kingzcheung.xime.clipboard.clipboardTabs
 import com.kingzcheung.xime.clipboard.ClipboardGroupStore
+import com.kingzcheung.xime.clipboard.db.ClipboardDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -75,7 +78,13 @@ class ClipboardGroupRenderTest {
 
     @Test fun dragGroupAheadOfTextThenRenameAndDeleteByButton() {
         val store = ClipboardGroupStore.getInstance(rule.activity)
-        store.add("收藏", listOf("text:7"))
+        // The board removes membership for IDs missing from Room; exercise a real record.
+        val recordId = runBlocking(Dispatchers.IO) {
+            ClipboardDatabase.getInstance(rule.activity).clipboardDao()
+                .addPinned("分组测试记录", "", System.currentTimeMillis())
+        }
+        val key = "text:$recordId"
+        store.add("收藏", listOf(key))
         val id = store.state.value.groups.single().id
         rule.setContent { XimeTheme(darkTheme = true) { ClipboardGroupSettingsContent(onBack = {}) } }
         val from = rule.onNodeWithTag("clipboard-order:group:$id").fetchSemanticsNode().boundsInRoot.center
@@ -92,7 +101,7 @@ class ClipboardGroupRenderTest {
         rule.onNodeWithTag("clipboard-group-name").performTextReplacement("常用")
         rule.onNodeWithTag("clipboard-group-name-save").performClick()
         assertEquals("常用", clipboardTabs(store.state.value)[1].label)
-        assertEquals(id, store.state.value.members["text:7"])
+        assertEquals(id, store.state.value.members[key])
         rule.onNodeWithContentDescription("删除").performClick()
         rule.onNodeWithText("取消").performClick()
         assertEquals(id, store.state.value.groups.single().id)

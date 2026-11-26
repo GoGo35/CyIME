@@ -1,0 +1,9 @@
+// The full app suite runs thousands of tests including Robolectric native renderers.
+// Bound the memory held by a single long-lived test JVM on the Actions worker.
+gradle.beforeProject { p ->
+    if (p.path == ':app') p.tasks.withType(org.gradle.api.tasks.testing.Test).configureEach {
+        maxHeapSize = '2g'
+        forkEvery = 100
+        maxParallelForks = 1
+    }
+}

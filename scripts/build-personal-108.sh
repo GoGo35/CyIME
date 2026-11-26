@@ -17,7 +17,8 @@ test -s "$dir/libcytranslate.so"
 test ! -e app/keystore.properties
 flags=(-I scripts/phone-release-abi.gradle -PcyimeReleaseAbi=arm64-v8a
        --console=plain --max-workers=2 -x :app:prepareOfflineTranslateLibraries)
-bash gradlew "${flags[@]}" :app:testDebugUnitTest :plugin-core:testDebugUnitTest
+bash gradlew "${flags[@]}" -I scripts/personal-108-tests.gradle \
+  :app:testDebugUnitTest :plugin-core:testDebugUnitTest
 bash gradlew "${flags[@]}" :app:assembleRelease
 mapfile -t files < <(find app/build/outputs/apk/release -name '*.apk' -type f)
 test "${#files[@]}" -eq 1
