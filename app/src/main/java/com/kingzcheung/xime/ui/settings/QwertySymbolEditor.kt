@@ -28,6 +28,7 @@ import com.kingzcheung.xime.ui.keyboard.rememberKeyboardInputPreferences
 import com.kingzcheung.xime.ui.keyboard.rememberSwipeHintsEnabled
 import com.kingzcheung.xime.ui.keyboard.SideSymbolTarget
 import com.kingzcheung.xime.ui.keyboard.SymbolInputMode
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -42,7 +43,11 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-internal fun QwertySymbolEditor(onBack: () -> Unit, initialTarget: String? = null) {
+internal fun QwertySymbolEditor(
+    onBack: () -> Unit,
+    initialTarget: String? = null,
+    loadDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) {
     val context = LocalContext.current
     val inputSettings = rememberKeyboardInputPreferences()
     val reverseSwipe = inputSettings.reverseSymbolSwipe
@@ -91,7 +96,7 @@ internal fun QwertySymbolEditor(onBack: () -> Unit, initialTarget: String? = nul
     LaunchedEffect(english, merged, variant, reload) {
         swipes = if (merged == null) LetterSwipeBindings.load(context, english) else emptyMap()
         loaded = false
-        val layouts = withContext(Dispatchers.IO) {
+        val layouts = withContext(loadDispatcher) {
             KeysConfigHelper.loadConfig(context)
             runCatching { CustomKeyboardLayouts.load(context).filter(CustomLayoutSymbols::editable) }.getOrDefault(emptyList())
         }
@@ -100,7 +105,7 @@ internal fun QwertySymbolEditor(onBack: () -> Unit, initialTarget: String? = nul
         // 正在改的自建布局已经删掉或拆回单字母：回到中文26键。
         if (merged != null && merged != FOURTEEN && custom == null) { merged = null; return@LaunchedEffect }
         // Read the same effective gestures used by the keyboard, including existing YAML overrides.
-        values = withContext(Dispatchers.IO) {
+        values = withContext(loadDispatcher) {
             if (merged == FOURTEEN) KeysConfigHelper.fourteenSymbolEditorValues(context)
             else if (custom != null) KeysConfigHelper.customLayoutSymbolEditorValues(context, custom)
             else KeysConfigHelper.qwertySymbolEditorValues(context, english, variant)
@@ -112,7 +117,7 @@ internal fun QwertySymbolEditor(onBack: () -> Unit, initialTarget: String? = nul
         val boardKeys = if (merged == FOURTEEN) FourteenKeySymbols.keys
             else custom?.let(CustomLayoutSymbols::keys) ?: QwertySwipeSymbols.keys.map(Char::toString)
         if (editing !in boardKeys) editing = null
-        versions = withContext(Dispatchers.IO) { QwertySwipeSymbols.versions(context, english) }
+        versions = withContext(loadDispatcher) { QwertySwipeSymbols.versions(context, english) }
         originalValues = values
         loaded = true
     }

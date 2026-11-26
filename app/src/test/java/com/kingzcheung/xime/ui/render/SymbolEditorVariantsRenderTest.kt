@@ -2,7 +2,6 @@ package com.kingzcheung.xime.ui.render
 
 import android.app.Application
 import android.graphics.Bitmap
-import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.MaterialTheme
@@ -18,12 +17,12 @@ import com.kingzcheung.xime.settings.KeysConfigHelper
 import com.kingzcheung.xime.settings.QwertySwipeSymbols
 import com.kingzcheung.xime.settings.SettingsPreferences
 import com.kingzcheung.xime.ui.settings.QwertySymbolEditor
+import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
@@ -52,21 +51,9 @@ class SymbolEditorVariantsRenderTest {
     }
 
     private fun waitForVariant(variant: CornerVariant) {
-        val current = hasTestTag("symbol-variant") and hasText(variant.label, substring = true)
-        val ready = hasTestTag("symbol-row-input") and isEnabled()
-        try {
-            rule.waitUntil(10_000) {
-                // The editor loads on Dispatchers.IO and posts results back to Android's main looper.
-                shadowOf(Looper.getMainLooper()).idle()
-                rule.onAllNodes(current, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() &&
-                    rule.onAllNodes(ready, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            }
-        } catch (timeout: ComposeTimeoutException) {
-            // Report the actual label or disabled control rather than only a generic timeout.
-            rule.onNodeWithTag("symbol-variant", true).assertTextContains(variant.label, substring = true)
-            rule.onNodeWithTag("symbol-row-input", true).assertIsEnabled()
-            throw timeout
-        }
+        rule.waitForIdle()
+        rule.onNodeWithTag("symbol-variant", true).assertTextContains(variant.label, substring = true)
+        rule.onNodeWithTag("symbol-row-input", true).assertIsEnabled()
     }
 
     @Test fun switchesPickTheLayoutAndEditsStayInIt() {
@@ -75,7 +62,10 @@ class SymbolEditorVariantsRenderTest {
         KeysConfigHelper.loadConfig(app)
         rule.setContent {
             MaterialTheme {
-                Surface(Modifier.requiredSize(400.dp, 1300.dp).testTag("settings-root")) { QwertySymbolEditor(onBack = {}) }
+                Surface(Modifier.requiredSize(400.dp, 1300.dp).testTag("settings-root")) {
+                    // Read the real config, inline in the effect so Compose's idling rule observes completion.
+                    QwertySymbolEditor(onBack = {}, loadDispatcher = Dispatchers.Unconfined)
+                }
             }
         }
         waitForVariant(CornerVariant.BOTH)
