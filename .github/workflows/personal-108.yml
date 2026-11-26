@@ -1,0 +1,119 @@
+name: Personalized 108 Release
+'on':
+  workflow_call:
+    inputs:
+      publish:
+        type: boolean
+        required: true
+    secrets:
+      SIGNING_KEY: {required: false}
+      KEY_STORE_PASSWORD: {required: false}
+      ALIAS: {required: false}
+      KEY_PASSWORD: {required: false}
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Prepare Android SDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            'platforms;android-36' 'build-tools;36.0.0' \
+            'ndk;29.0.14206865' 'cmake;3.22.1'
+      - name: Test, build and inspect unsigned Release
+        run: bash scripts/build-personal-108.sh
+      - name: Retain unit test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-test-results
+          path: |
+            app/build/test-results/testDebugUnitTest/TEST-*.xml
+            plugin-core/build/test-results/testDebugUnitTest/TEST-*.xml
+          retention-days: 7
+      - uses: actions/upload-artifact@v7
+        with:
+          name: personalized-108-unsigned-candidate
+          path: ${{ runner.temp }}/candidate/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    if: >-
+      inputs.publish && github.event_name == 'workflow_dispatch' &&
+      github.repository == 'GoGo35/CyIME' &&
+      github.ref == 'refs/heads/personal-1.15.108'
+    needs: candidate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: personalized-108-unsigned-candidate
+      - name: Sign and verify on this ephemeral runner only
+        env:
+          KEY_B64: ${{ secrets.SIGNING_KEY }}
+          STORE_PASS: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          : "${KEY_B64:?Missing SIGNING_KEY}"
+          : "${STORE_PASS:?Missing KEY_STORE_PASSWORD}"
+          : "${KEY_ALIAS:?Missing ALIAS}" "${KEY_PASS:?Missing KEY_PASSWORD}"
+          bt="$ANDROID_HOME/build-tools/36.0.0"
+          if [[ ! -x "$bt/apksigner" ]]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+              'build-tools;36.0.0'
+          fi
+          ks="$RUNNER_TEMP/personal-release.jks"
+          trap 'rm -f "$ks"' EXIT
+          printf %s "$KEY_B64" | base64 --decode > "$ks"
+          out=CyIME-personal-1.15.108-arm64-v8a.apk
+          "$bt/apksigner" sign --ks "$ks" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:STORE_PASS --key-pass env:KEY_PASS \
+            --v1-signing-enabled true --v2-signing-enabled true \
+            --v4-signing-enabled false --out "$out" unsigned.apk
+          "$bt/apksigner" verify --verbose --min-sdk-version 23 \
+            --print-certs "$out" > "$RUNNER_TEMP/signature.txt"
+          for scheme in 'v1 scheme (JAR signing)' \
+                        'v2 scheme (APK Signature Scheme v2)'; do
+            grep -F "Verified using ${scheme}: true" "$RUNNER_TEMP/signature.txt"
+          done
+          grep '^Signer #1 certificate SHA-256 digest:' \
+            "$RUNNER_TEMP/signature.txt" > signer.txt
+          sha256sum "$out" > SHA256SUMS.txt
+      - name: Publish tested APK, checksum and public certificate fingerprint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          tag=personal-v1.15.108
+          repo="$GITHUB_REPOSITORY"
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to replace it.' >&2; exit 1
+          fi
+          # Do not publish against an unrelated pre-existing tag.
+          if ref=$(gh api "repos/$repo/git/ref/tags/$tag" --jq .object.sha); then
+            test "$ref" = "$GITHUB_SHA"
+          fi
+          gh release create "$tag" --repo "$repo" --target "$GITHUB_SHA" \
+            --title 'CyIME 1.15.108 个性化正式版（GoGo35）' \
+            --notes-file release-notes.md --latest \
+            CyIME-personal-1.15.108-arm64-v8a.apk SHA256SUMS.txt signer.txt
