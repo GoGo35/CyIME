@@ -77,10 +77,11 @@ class ClipboardGroupRenderTest {
     )
 
     @Test fun dragGroupAheadOfTextThenRenameAndDeleteByButton() {
-        val store = ClipboardGroupStore.getInstance(rule.activity)
+        val context = rule.activity.applicationContext
+        val store = ClipboardGroupStore.getInstance(context)
         // The board removes membership for IDs missing from Room; exercise a real record.
         val recordId = runBlocking(Dispatchers.IO) {
-            ClipboardDatabase.getInstance(rule.activity).clipboardDao()
+            ClipboardDatabase.getInstance(context).clipboardDao()
                 .addPinned("分组测试记录", "", System.currentTimeMillis())
         }
         val key = "text:$recordId"
