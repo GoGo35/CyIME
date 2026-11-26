@@ -39,6 +39,7 @@ class NumberRowLongPressTest {
 
     private fun show() {
         val app = ApplicationProvider.getApplicationContext<Application>()
+        AppFonts.initialize(app)
         KeysConfigHelper.loadConfig(app)
         com.kingzcheung.xime.ui.theme.KeyboardThemes.initFromConfig(app)
         rule.setContent {

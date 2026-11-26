@@ -2,6 +2,7 @@ package com.kingzcheung.xime.ui.render
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.MaterialTheme
@@ -22,6 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
@@ -49,10 +51,22 @@ class SymbolEditorVariantsRenderTest {
         crop.recycle(); bitmap.recycle()
     }
 
-    private fun waitForVariant(variant: CornerVariant) = rule.waitUntil(10_000) {
-        rule.onAllNodesWithText(variant.label, substring = true).fetchSemanticsNodes().isNotEmpty() &&
-            rule.onAllNodesWithTag("symbol-row-input").fetchSemanticsNodes().isNotEmpty() &&
-            runCatching { rule.onNodeWithTag("symbol-row-input").assertIsEnabled() }.isSuccess
+    private fun waitForVariant(variant: CornerVariant) {
+        val current = hasTestTag("symbol-variant") and hasText(variant.label, substring = true)
+        val ready = hasTestTag("symbol-row-input") and isEnabled()
+        try {
+            rule.waitUntil(10_000) {
+                // The editor loads on Dispatchers.IO and posts results back to Android's main looper.
+                shadowOf(Looper.getMainLooper()).idle()
+                rule.onAllNodes(current, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() &&
+                    rule.onAllNodes(ready, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (timeout: ComposeTimeoutException) {
+            // Report the actual label or disabled control rather than only a generic timeout.
+            rule.onNodeWithTag("symbol-variant", true).assertTextContains(variant.label, substring = true)
+            rule.onNodeWithTag("symbol-row-input", true).assertIsEnabled()
+            throw timeout
+        }
     }
 
     @Test fun switchesPickTheLayoutAndEditsStayInIt() {

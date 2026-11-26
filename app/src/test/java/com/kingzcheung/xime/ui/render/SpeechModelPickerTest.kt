@@ -8,6 +8,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.kingzcheung.xime.model.ModelDownloadState
+import com.kingzcheung.xime.plugin.core.runtime.PluginManager
 import com.kingzcheung.xime.settings.InputLanguage
 import com.kingzcheung.xime.speech.SpeechModelCatalog
 import com.kingzcheung.xime.ui.settings.SpeechModelPicker
@@ -31,6 +32,7 @@ class SpeechModelPickerTest {
     @Test fun providerPresetIsEditableAndDoesNotTransferAnotherProvidersKey() {
         val api = com.kingzcheung.xime.speech.OnlineSpeechApi
         val context = rule.activity
+        PluginManager.initialize(context.application)
         api.save(context, com.kingzcheung.xime.speech.OnlineSpeechApi.Config(api.DEFAULT_BASE_URL, "synthetic-key", api.DEFAULT_MODEL))
         rule.setContent {
             XimeTheme(darkTheme = true) { com.kingzcheung.xime.ui.settings.OnlineSpeechApiSection() }
